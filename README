@@ -1,0 +1,1 @@
+Whenever bac or euc is not specified in a script file name, use ctrl-F to replace bac by euc and vice-versa. Some bug may occur such as background being replaced by eucground, but it rarely happens and is easily fixed upon error occurence

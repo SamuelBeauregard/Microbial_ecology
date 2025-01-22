@@ -1,0 +1,237 @@
+RStudio 2022.07.2+576 "Spotted Wakerobin" Release (e7373ef832b49b2a9b88162cfe7eac5f22c40b34, 2022-09-06) for Ubuntu Bionic
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36
+# Code 
+## Installing librarie
+R version 4.3.1 
+```{r, eval=FALSE}
+#  install.packages("devtools")
+#  devtools::install_github("andyofsmeg/ggTag")
+# install.packages("forcats")
+# install.packages("dplyr")
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# BiocManager::install(version = "3.17")
+# BiocManager::install('phyloseq')
+# install.packages("randomcoloR")
+# install.packages("ggplot2")
+# install.packages("tidyr")
+# install.packages("stringr")
+# install.packages("ggtext")
+# install.packages("DT")
+```
+## Loading the libraries
+```{r, message=FALSE, warning=FALSE}
+library(devtools)
+library(ggTag) # To extract title from plots
+library(forcats) # To reorder our factor (function "fct_relevel")
+library(dplyr) # Dataframe manipulation (notably function "pull")
+library(phyloseq) # Very pratical library for the analysis of amplicon data 
+library(randomcoloR) # Generate sets of random colors
+library(ggplot2) # Generate plot 
+library(tidyr) # Dataframe manipulation (function "separate")
+library(stringr) # Makes working with strings as easy as possible (function "str_replace")
+library(ggtext) # Allow the use of markdown text (used to make names italic)
+library(DT)# Make beautiful table 
+```
+
+
+```{r}
+asv=read.table("~/median/median_euc.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
+taxa=read.table("~/median/median_taxa_euc.csv", sep=",", row.names=1, header=TRUE)
+meta=read.table('~/median/median_meta_euc.csv', sep=",", row.names=1, header=TRUE)
+```
+
+Remove unwanted sample and column from the sample metadata file 
+```{r, echo=FALSE}
+meta=subset(meta, !Sample_type=='Peatbog') # Remove sample from the peatbog
+meta=subset(meta, select=-c(is.neg))
+meta$position_pastille[meta$Sample_type == "Groundwater"] <- NA
+```
+
+
+```{r}
+library(tidyr)
+meta$sample_name=row.names(meta) # Create new column with row.name
+# Separate new column based on hyphen 
+meta=separate(meta, 
+              col=sample_name, 
+              into=c("experience", "short_sample_type", "time", "bioreactor", "replicate"), 
+              sep="-") 
+meta$sample_name=row.names(meta) # reset row names because R 
+
+meta$experience=gsub("E", "Experience ", meta$experience) # In the column experience, replace E with Experience 
+meta$bioreactor=gsub("B0","Aquifer", meta$bioreactor) # In the column bioreactor, replace B00 with Aquifer 
+meta$bioreactor=gsub("B", "Bioreactor ",meta$bioreactor) # In the column bioreactor, replace B with Bioreactor 
+
+```
+
+substract 21 from the days of exp. 2
+```{r}
+meta$time <- as.numeric(gsub('T', '', meta$time))
+meta$time <- ifelse(meta$experience == 'Experience 2' & meta$time != '0', meta$time - 21, meta$time)
+meta$time <- ifelse(meta$time < 10, paste(0, meta$time, sep = ''), meta$time)
+#meta$time <- order(meta$time)
+meta$time <- paste('T', meta$time, sep = '')
+
+```
+
+```{r}
+# Creating new column for our iterator by combining experience # and sample type 
+meta$experience_sample=paste(meta$experience,"-",meta$Sample_type)
+
+# create the new column to be used for the x axis (representing both times and replicate #)
+meta$time_replicate=with(meta, ifelse(bioreactor=="Aquifer",paste("T00.", meta$replicate, sep = ""),
+                                      ifelse(experience=="Experience 2" & Sample_type=="Rock",
+                                      paste(meta$time,paste("R.", meta$replicate), sep = "-"),
+                                      meta$time)))
+
+# While we are here let's also get rid of columns we won't need 
+meta=subset(meta, select=-c(position_pastille, temp, ph, do_percent, dic, doc, short_sample_type, X, X.1, X.2, X.3, X.4))
+```
+
+
+Generate long format dataframe for plotting 
+```{r}
+library(phyloseq)
+# Merge into phyloseq object
+ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), sample_data(meta))
+# Select taxonomic rank
+#
+#
+taxa_rank="Family" # change to the taxa rank wanted (Family or Genus)
+#
+#
+#
+ps_rel_abund=transform_sample_counts(ps, function(x) x/sum(x)) # get abundance in %
+glom=tax_glom(ps_rel_abund, taxrank = taxa_rank) # agglomerate taxa at the desired taxonomic level
+
+# Concatenate experience and short_sample_type into new column name
+# This will allow me to loop over this new variable in order to get a more accurate relative abundance of the taxa
+df=psmelt(glom)
+```
+
+## Identify most abundant taxa and assign color 
+
+Create a list of unique most abundant taxas in each sample
+```{r}
+library(dplyr)
+list_of_all_taxonomic_rank= list() # Create empty list
+i = 0
+# Loop over every sample to combine taxa that are not the top 3 in new group called Others (can't do more as the bar chart become too crowded and unreadable)
+for (each_sample in unique(df$Sample)){
+    i=i+1
+    sample=subset(df, Sample==each_sample)
+    total_abundance=aggregate(sample$Abundance, by=list(taxa_rank=sample[[taxa_rank]]), FUN=sum)
+    top=head(total_abundance[order(total_abundance$x, decreasing= T),], n = 3)
+    others_df=sample[!sample[[taxa_rank]] %in% top$taxa_rank,] # identify other
+    others_list=pull(others_df, taxa_rank)
+    sample[sample[[taxa_rank]]%in% others_list,][[taxa_rank]]="Others"
+    list_of_all_taxonomic_rank[[i]]=sample
+}
+df2=do.call("rbind",list_of_all_taxonomic_rank) # combine all generated list into one dataframe
+unique_taxon=data.frame(unique(df2[[taxa_rank]]))
+name=colnames(unique_taxon)
+names(unique_taxon)[names(unique_taxon)==name]=as.character(taxa_rank) # Rename column
+
+#rename the aquifer to be included with E1_R 
+df2 <- df2 %>%
+  mutate(experience_sample = ifelse(bioreactor == "Aquifer" & experience_sample == "Experience 1 - Groundwater", 
+                                    "Experience 1 - Rock", 
+                                    experience_sample))
+```
+
+## Create new color range
+```{r, eval=FALSE}
+# library(randomcoloR)
+# library(stringr)
+# library(forcats) 
+# library(ggplot2)
+# n=nrow(unique_taxon)
+# palette=distinctColorPalette(n, runTsne = TRUE)
+# unique_taxon[[taxa_rank]]=factor(unique_taxon[[taxa_rank]])
+# names(palette)=levels(unique_taxon[[taxa_rank]])
+# palette[["Others"]]="#E1E1E1"
+# 
+# #  recreate palette with markdown to italize name and remove the underscore after Unclassified
+# all_names=data.frame(names(palette))
+# names_markdown=all_names %>%
+#   mutate(names.palette.=str_replace(names.palette., "(.*)","*\\1*"),
+#          names.palette.=str_replace(names.palette., "\\*Unclassified_(.*)\\*","Unclassified *\\1*"),
+#          names.palette.=str_replace(names.palette., "\\*Others\\*", "Others"))
+# list_names=as.vector(names_markdown$names.palette.)
+# # Replace names of obj
+# names(palette)=c(list_names)
+# 
+# # Making the same modification to the taxa_rank names from the legend to the taxa_rank names in the dataframe
+# df2[[taxa_rank]]=str_replace(df2[[taxa_rank]], "(.*)","*\\1*")
+# df2[[taxa_rank]]=str_replace(df2[[taxa_rank]], "\\*Unclassified_(.*)\\*","Unclassified *\\1*")
+# df2[[taxa_rank]]=str_replace(df2[[taxa_rank]], "\\*Others\\*", "Others")
+# 
+# 
+# # Ordering the legend in alphabetical order
+# legend_raw=unique(df2[[taxa_rank]]) #Extract legend as text
+# ordered_legend=sort(legend_raw) # order alphabetically
+# reordered_legend=fct_relevel(ordered_legend, "Others") # move "Others" to the beginning
+# final_legend=levels(reordered_legend) # Extract the levels in a new object
+# palette[["Apoikiospumella"]]="black"
+# my_scale <- scale_fill_manual(name=as.character(taxa_rank), breaks=paste(final_legend), values = palette, na.translate=FALSE, drop=TRUE, limits = force) # Recreate color fill
+```
+
+Saving and reloading color range 
+```{r, eval=FALSE}
+#saveRDS(my_scale,paste('~/stats/histogramme/euc/top_', taxa_rank, '_color_palette.rds', sep = '')) # saving color palette
+ my_scale=readRDS(paste('~/stats/histogramme/euc/top_', taxa_rank, '_color_palette.rds', sep = '')) # Load color palette (it'll erase the previous scale)
+```
+
+## Plotting your figures
+```{r, eval=FALSE}
+#Loop for plotting results
+library(forcats)
+library(ggtext)
+library(ggTag)
+
+plot_list = list()
+i = 0
+for (habitat in unique(df2$experience_sample)){
+  i = i + 1
+  df_sample=subset(df2, experience_sample==habitat)
+  p=ggplot(df_sample, aes(x=time_replicate, weight=Abundance, fill=fct_reorder(.data[[taxa_rank]],Abundance,.desc=FALSE))) + # .data is very important to force the evaluation of the input variables (taxonomic_rank)
+  geom_bar() +
+  labs(y ='Relative abundance (%)', x="Time") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme(text = element_text(size = 9),
+        axis.title=element_text(size=8),
+        legend.title=element_text(size=8),
+        plot.title = element_text(hjust =0.5),
+        axis.text.x = element_text(angle=70,vjust = 0.5, size=7),
+        legend.position="bottom",
+        legend.text=element_markdown(size=10),
+        legend.key.size = unit(0.5, 'cm'), # adjusting the size of the legend colored box
+        strip.background = element_blank()) + # remove facet_grid box euckground
+  ggtitle(paste(habitat)) +
+  my_scale +
+  facet_grid(~bioreactor, scales="free", space="free") +
+  guides(fill=guide_legend(nrow = 8, title=taxa_rank, title.position="top", title.hjust = 0.5, reverse=FALSE))
+  plot_list[[i]] = p
+}
+# plot_list
+
+# Set path for saving plots
+plot_path="~/stats/histogramme/euc/"
+for (i in plot_list[]){
+  title=extractGGTitle(i) # extract title from plot
+  titlepdf=paste('median_', taxa_rank,"-", title,".pdf", sep="") # add.pdf to the end of every title to save figure as pdf
+  ggsave(as.character(titlepdf),plot=i, device="pdf", path=plot_path, width=27.94, height = 21.59, units="cm") # save plot
+}
+```
+
+# Export tables
+```{r, eval=FALSE}
+df2$"Relative abundance"=(paste( df2$experience_sample, "_", df2$time_replicate,"_", df2[[taxa_rank]]))
+supplementary_dataframe=aggregate(x=df2$Abundance, by=list(df2$"Relative abundance"), FUN=sum)
+
+# Save tables
+title_df=paste("~/stats/histogramme/euc/median_", taxa_rank,"-","supplementary_dataframe",".csv", sep="") 
+write.csv(supplementary_dataframe, as.character(title_df), quote=FALSE, row.names=FALSE)
+```

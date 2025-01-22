@@ -1,0 +1,89 @@
+---
+title: "PCoA_euc"
+author: "samuel beauregard"
+date: "2023-07-17"
+output: html_document
+---
+
+Load package and set-up directory
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "~/stats")
+library(tidyr)
+``` 
+
+load data
+```{r}
+asv=read.table("~/median/median_euc.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
+taxa=read.table("~/median/median_taxa_euc.csv", sep=",", row.names=1, header=TRUE)
+meta=read.table('~/median/median_meta_bac.csv', sep=",", row.names=1, header=TRUE)
+```
+
+#convert physico-chemical parameter to z-scored data in the metadata file to standardize the data
+```{r} 
+#create new column with the original values
+names(meta) <- sub("^ph$", "ph_raw", names(meta))
+names(meta) <- sub("^do_percent$", "do_percent_raw", names(meta))
+names(meta) <- sub("^dic$", "dic_raw", names(meta))
+names(meta) <- sub("^doc$", "doc_raw", names(meta))
+
+#standardize
+columns_to_standardize <- c('ph_raw', 'do_percent_raw', 'dic_raw', 'doc_raw')
+
+# Use scale function to compute z-scores for the specified columns
+meta[paste0(columns_to_standardize, "_zscore")] <- scale(meta[columns_to_standardize])
+
+#create the new columns
+columns_to_rename <- c('ph_raw_zscore', 'do_percent_raw_zscore', 'dic_raw_zscore', 'doc_raw_zscore')
+new_column_names <- c('ph', 'do_percent', 'dic', 'doc')
+
+# Rename the columns
+colnames(meta)[colnames(meta) %in% columns_to_rename] <- new_column_names
+
+```
+
+
+# Modify metadata file to add colum for bioreactor, time, replicate # 
+```{r}
+meta$sample_name=row.names(meta)
+meta=separate(data = meta, col = sample_name, into = c("experience", "short_sample_type", "time", "bioreactor", "replicate"), sep = "-")
+
+meta$Sample_type=factor(meta$Sample_type,levels = c("Rock", "Peatbog", "Groundwater")) 
+
+meta$position_pastille = as.character (meta$position_pastille)
+
+meta$sample_name=row.names(meta)
+
+meta$time<-gsub("T","",as.character(meta$time))
+meta$time = as.integer (meta$time)
+meta$position_pastille[meta$Sample_type == "Groundwater"] <- NA
+
+#create a new column: experience_short_sample_type
+
+meta$experience_short_sample_type <- as.factor(paste(meta$experience, meta$short_sample_type, sep = '_'))
+
+```
+
+#clean the data
+```{r}
+
+#remove unnecessary samples from asv
+
+asv <- subset(asv, select = !grepl("PB", colnames(asv)))
+asv <- subset(asv, select = !grepl("T00", colnames(asv)))
+asv <- subset(asv, select = !grepl("B0", colnames(asv)))
+
+#remove B0 samples from meta and asv as they're very different from the bioreactors
+#for meta
+meta=subset(meta, !bioreactor=='B0')
+
+
+```
+
+#Save files
+```{r, eval=FALSE}
+write.csv(asv, file = "~/stats/median_asv_MV_euc.csv")
+write.csv(meta, file = "~/stats/median_meta_MV_euc.csv")
+write.csv(taxa, file = "~/stats/median_taxa_MV_euc.csv")
+
+```
+

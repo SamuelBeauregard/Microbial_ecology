@@ -1,0 +1,369 @@
+---
+title: "MV_euc"
+output:
+  html_document: default
+  pdf_document: default
+date: "2024-04-06"
+---
+
+Load package and set-up directory 
+```{r setup, include=FALSE}
+#install.packages('ggdendro')
+#install.packages('ggheatmap')
+#install.packages('dendextend')
+
+
+knitr::opts_knit$set(root.dir = "~/stats/euc")
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(glue)
+library(cluster)
+library(dplyr)
+library(scales)
+library(tidyr)
+library(viridis)
+
+library(ggVennDiagram)
+library(plotly)
+library(VennDiagram)
+
+library(GGally)
+library(ggdendro)
+library(ggheatmap)
+library(dendextend)
+
+#library(ggforce)
+``` 
+
+#load data
+```{r}
+asv=read.table( "~/stats/median_asv_MV_euc.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
+meta=read.table("~/stats/median_meta_MV_euc.csv", sep=",", row.names=1, header=TRUE, stringsAsFactors = TRUE)
+ #change time for exp. 2 from 22-45 to 1-24
+ meta$time <- ifelse(meta$experience == 'E2', meta$time - 21, meta$time)
+
+ meta <- meta %>% select(-c(X, X.1, X.2, X.3, X.4))
+
+ taxa=read.table("~/stats/median_taxa_MV_euc.csv", sep=",", row.names=1, header=TRUE)
+
+```
+
+#check for colinearity between dic, doc, time and bioreactor for each experiment
+```{r}
+
+#subset meta based on exp
+meta_E1 <- subset(meta, meta$experience == 'E1' & short_sample_type == 'R')
+
+meta_E2 <- subset(meta, meta$experience == 'E2' & short_sample_type == 'W')
+
+
+ggpairs(meta_E1, columns = c('dic_raw', 'doc_raw', 'time', 'ph_raw', 'do_percent_raw', 'bioreactor'), axisLabels = 'show', ggplot2::aes(colour = bioreactor, ))
+
+ggpairs(meta_E2, columns = c('dic_raw', 'doc_raw', 'time', 'ph_raw', 'do_percent_raw', 'bioreactor'), ggplot2::aes(colour = bioreactor))
+
+sum_E1 <- summary(meta_E1)
+aov(meta_E1$dic_raw ~ meta_E1$bioreactor)
+write.csv(sum_E1, '~/stats/sum_E1.csv')
+
+sum_E2 <- summary(meta_E2)
+write.csv(sum_E2, '~/stats/sum_E2.csv')
+
+#DOC and time are strongly correlated for exp. 2 so DOC won't be included in the dbRDA
+```
+
+
+NMDS all 
+```{r} 
+
+#remove all ASV that are not in any sample
+asv <- asv[rowSums(asv) > 0, ]
+
+# asv_hellinger <- decostand(asv, method="hellinger") #only if want pcoa on hellinger instead of bray
+
+meta_pcoa <- subset(meta, experience_short_sample_type == 'E1_R' | experience_short_sample_type == 'E2_W')
+# 
+ps <- phyloseq(
+    otu_table(asv, taxa_are_rows = TRUE), #change to asv_hellinger if want hellinger
+    tax_table(as.matrix(taxa)),
+    sample_data(meta_pcoa)
+  )
+
+  # Perform PCoA using the "bray" dissimilarity metric
+  ordu <- ordinate(ps, 'NMDS', 'bray')
+    p <- plot_ordination(ps, ordu, color = "time", shape = "experience_short_sample_type", title = paste('NMDS all euc samples', '      ', 'stress =', signif(ordu$stress, 3), sep = '' )) +
+       theme_minimal() +
+  theme(
+   panel.grid = element_blank(),
+    text = element_text(size = 12),
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(color = "black") # Set axis text color to black
+  ) +
+    scale_fill_viridis_c(alpha = 1, begin = 0, end = 1, direction = 1, option = "D", aesthetics = "colour")
+
+print(p)
+  
+  
+    # Save the plot as a separate image file
+  ggsave(("~/stats/NMDS/euc/NMDS_euc_all.pdf"), p, width = 8, height = 6, dpi = 300)
+```
+
+# NMDS for loop for different sample_types and experiment 
+```{r} 
+
+# Create an empty list to store the plots
+plot_list <- list()
+#type_exp == 'E2_W'
+# Loop through unique values of "type_exp"
+for (type_exp in unique(meta$experience_short_sample_type)) {
+#type_exp = 'E1_R'
+    # Subset the data for the current "type_exp"
+  meta_sample <- subset(meta, experience_short_sample_type == type_exp)
+  
+  # Create a phyloseq object using the subsetted data
+#asv_hellinger <- decostand(asv, method="hellinger") #only if want pcoa on hellinger instead of bray  
+  ps <- phyloseq(
+    otu_table(asv, taxa_are_rows = TRUE),
+    tax_table(as.matrix(taxa)),
+    sample_data(meta_sample)
+  )
+# 
+#   
+    # Perform NMDS using the "bray" dissimilarity metric
+  ordu <- ordinate(ps, 'NMDS', 'bray')
+  
+  # Create the NMDS plot
+  p <- plot_ordination(ps, ordu, color = "time", shape = "bioreactor"#, title = paste('NMDS ', type_exp, ' euc', '        ', 'stress =', signif(ordu$stress, 3), sep = '' )
+                       )+
+ theme_minimal() +
+  theme(
+   panel.grid = element_blank(),
+    text = element_text(size = 12),
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(color = "black") # Set axis text color to black
+  ) +
+    scale_fill_viridis_c(alpha = 1, begin = 0, end = 1, direction = 1, option = "D", aesthetics = "colour")
+  
+
+  # Save the plot in the plot_list with a name starting with "PCoA_euc_"
+  plot_list[[paste0("NMDS_euc_", type_exp)]] <- p
+  # 
+  print(p)
+  # 
+  # Save the plot as a separate image file
+  filename <- paste0("NMDS_euc_", type_exp, ".pdf")
+  ggsave(paste0("~/stats/NMDS/euc/NMDS_euc_", type_exp, ".pdf"), p, width = 8, height = 6, dpi = 300)
+}
+
+```
+
+
+Prep data for db-RDA
+```{r}
+# Create a new column using the first two terms of the sample's name
+asv_db <- as.data.frame(t(asv))
+asv_db$experience_short_sample_type <- (substr(rownames(asv_db), 1, 4))
+asv_db$experience_short_sample_type <- gsub('-', '_', asv_db$experience_short_sample_type)
+asv_db$experience_short_sample_type <- as.factor(asv_db$experience_short_sample_type)
+asv_db <- as.data.frame(asv_db) %>%
+dplyr::select(experience_short_sample_type, everything())  # Reorder columns
+```
+
+#db-RDA on all to confirm experiment and sample_type are significantly differents 
+```{r}
+asv_all <- as.data.frame(t(asv))
+
+ beta_dist_all <- vegdist(asv_all, method = "bray")
+dbRDA_all <- capscale(beta_dist_all ~ Sample_type*experience + bioreactor, data = meta, na.action = na.omit)
+anova_all <- anova(dbRDA_all, by = 'onedf', permu = 1000)
+
+anova_all
+```
+
+
+
+#perform and plot db-RDA and varpart
+```{r}
+meta$position_pastille <- as.factor(meta$position_pastille)
+
+i = 0
+dbRDA_exp_type = list()  # Initialize an empty list before the loop
+
+for (type_exp in unique(meta$experience_short_sample_type)) {
+ i = i + 1
+
+  # Subset the dataframe based on the current type_exp
+  subset_asv <- asv_db[asv_db$experience_short_sample_type == type_exp, ]
+  subset_asv <- subset_asv[, -which(names(asv_db) == 'experience_short_sample_type')]
+  subset_meta <- meta[meta$experience_short_sample_type == type_exp, ]
+  beta_dist <- vegdist(subset_asv, method = "bray")
+  
+
+  # Perform db-RDA
+if (type_exp == 'E2_W') {
+  dbRDA <- capscale(beta_dist ~ dic + time + bioreactor, data = subset_meta, na.action = na.omit)
+} else {
+  dbRDA <- capscale(beta_dist ~ dic + doc + dic:doc + time + bioreactor, data = subset_meta, na.action = na.omit)
+}  
+  #    
+  dic=subset_meta$dic
+  doc=subset_meta$doc
+  
+  
+# Extract the site scores from dbRDA result
+site_scores <- scores(dbRDA, display = "sites")
+site_scores_df <- as.data.frame(site_scores)
+
+# Extract the variable scores from dbRDA result
+variable_scores <- scores(dbRDA, display = "bp")
+variable_scores_df <- as.data.frame(variable_scores)
+
+# Get the dimension names from the site scores
+dim_names <- colnames(site_scores_df)
+
+# Calculate the eigenvalues of the dbRDA result
+eigenvals <- eigenvals(dbRDA)
+
+# Calculate the percentage of variance explained by each dimension
+var_explained <- eigenvals / sum(eigenvals) * 100
+
+# Create a dataframe combining site scores and metadata
+plot_data <- cbind.data.frame(site_scores_df, subset_meta)
+
+  
+  
+dbrdarock <- ggplot() +
+  geom_hline(yintercept = 0, linetype = "solid", color = "gray") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "gray") +
+  geom_point(data = plot_data, aes(x = CAP1, y = CAP2, shape = bioreactor, color = time), size = 2) +
+  geom_segment(data = variable_scores_df, aes(x = 0, y = 0, xend = CAP1, yend = CAP2), 
+               arrow = arrow(length = unit(0.15, "cm")), color = "black") +
+  
+  # Add text labels for environmental variable names
+  geom_text(
+    data = variable_scores_df,
+    aes(x = CAP1, y = CAP2, label = rownames(variable_scores_df)),
+    vjust = -1, hjust = 0.5,
+    color = "#c45015"
+  ) +
+
+  # scale_color_manual(values = c("forestgreen","goldenrod3","firebrick3", "deepskyblue3" ), name = "bioreactor",) + 
+  xlab(paste(dim_names[1], " (", round(var_explained[1], 2), "%)")) + #naming the x axis
+  ylab(paste(dim_names[2], " (", round(var_explained[2], 2), "%)")) + #naming the y axis
+#  geom_text(data = plot_data, aes(x = CAP1, y = CAP2, label = sample_name), hjust = 0.5, vjust = -0.5, size = 3.5) + #adding the sample name
+  theme_minimal() +
+  theme(text = element_text(size = 15))
+
+# Store the results in the list
+dbRDA_exp_type[[i]] <- list(
+  dbRDA = dbRDA,
+  plot = dbrdarock
+)
+print(dbrdarock)
+#figure out how to save if want to publish, if not, it's below the script #maybe use ggVennDiagram instead?
+#variance partitioning for every dbRDA #varpart only allows for 4 explanatory variables so the interaction has been removed from the analysis
+if (type_exp == 'E2_W') { #unsure if it's the proper type_exp
+ varpart_full <- varpart(beta_dist, ~ dic, ~ time,~ bioreactor, data = subset_meta)
+  Venn_varpart <-  plot(varpart_full, bg = c("hotpink","skyblue"), Xnames = c('DIC', 'Time', 'Bioreactor'))
+} else {
+  varpart_full <- varpart(beta_dist, ~ dic,~ doc,~ time,~ bioreactor, data = subset_meta)
+     Venn_varpart <-  plot(varpart_full, bg = c("hotpink","skyblue"), Xnames = c('DIC', 'DOC', 'Time', 'Bioreactor'))
+}  
+
+  # Set path for saving plots
+plot_path="~/stats/dbRDA/euc/"
+
+  #save plots
+name <- paste('median_', type_exp, "_dbRDA_results_", i, ".jpeg", sep = "")
+ggsave(file.path(plot_path, name), width = 6, height = 4, plot = dbrdarock)
+}
+
+```
+
+#statistical tests db-RDA
+```{r}
+
+meta$experience_short_sample_type <- as.factor(meta$experience_short_sample_type)
+meta$bioreactor <- as.factor(meta$bioreactor)
+meta$experience <- as.factor(meta$experience)
+
+i = 0
+# Loop through unique values of "experience_short_sample_type"
+for (type_exp in unique(meta$experience_short_sample_type)) {
+  
+  i = i + 1
+
+  # Now you can access the dbRDA result and plot as follows:
+  anova_exp_results <- anova(dbRDA_exp_type[[i]][[1]], by="onedf", permu=1000)
+
+  Rsquare_exp <- RsquareAdj(dbRDA_exp_type[[i]][[1]])
+
+  #summary results dbRDA
+  dbRDA_exp <- summary(dbRDA_exp_type[[i]][[1]])
+   
+  
+  # Set path for saving plots
+   plot_path = "~/stats/dbRDA/euc/anova_summary"
+
+   # Save files for anova
+   name <- paste(type_exp, "_median_anova_results_", i, ".csv", sep = "")
+   write.csv(anova_exp_results, file = file.path(plot_path, name))
+   #save file for
+   name_R <- paste(type_exp, "_median__Rsquare_results_", i, ".csv", sep = "")
+     write.csv(Rsquare_exp, file = file.path(plot_path, name_R))
+
+}
+```
+
+Prep data for dendrogram
+```{r}
+# Create a new column using the first two terms of the sample's name
+asv_dend <- as.data.frame(t(asv))
+asv_dend$experience_short_sample_type_bio <- paste((substr(rownames(asv_dend), 1, 4)), (substr(rownames(asv_dend), 10, 11)), sep = '_')
+asv_dend$experience_short_sample_type_bio <- gsub('-', '_', asv_dend$experience_short_sample_type_bio)
+asv_dend$experience_short_sample_type_bio <- as.factor(asv_dend$experience_short_sample_type_bio)
+asv_dend <- as.data.frame(asv_dend) %>%
+dplyr::select(experience_short_sample_type_bio, everything())  # Reorder columns
+
+asv_dend$name <- rownames(asv_dend)
+asv_dend$time <- as.integer(substr(asv_dend$name, 7, 8))
+asv_dend$time <- ifelse(grepl('E2_W', asv_dend$experience_short_sample_type_bio), asv_dend$time - 21, asv_dend$time)
+
+asv_dend$time <- ifelse(asv_dend$time < 10, paste('0', asv_dend$time, sep = ''), asv_dend$time)
+asv_dend$time <- paste('T', asv_dend$time, sep  = '')
+```
+
+forloop of dendrograms for every bioreactors and every day
+```{r}
+
+i = 0
+# Loop through unique values of "experience_short_sample_type"
+for (den in unique(asv_dend$experience_short_sample_type_bio)) {
+i = i + 1
+ 
+  if (grepl('E1_W', den) | grepl('E2_R', den)) {
+    next  
+  }
+
+#create the asv DF only containing the experiments of interest
+sub_asv <- subset(asv_dend, experience_short_sample_type_bio == den)
+
+#use time as the rowname for better labelling in the graphs
+rownames(sub_asv) <- sub_asv$time
+
+#remove the column 'experience_short_sample_type_bio'
+sub_asv <- sub_asv %>% dplyr::select(-c(experience_short_sample_type_bio, time, name))
+
+
+veg <- vegdist(sub_asv)
+
+hcl <- hclust(veg)
+
+plot_test <- as.dendrogram(hcl)
+plot(plot_test, ylab = "Dissimilarity", xlab = 'time', ylim = c(0, 1), main = den)
+
+}
+```

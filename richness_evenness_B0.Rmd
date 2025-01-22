@@ -1,0 +1,198 @@
+---
+title: "richness_evenness_euc"
+output: html_document
+date: "2024-10-15"
+---
+
+#load data
+```{r}
+#load data
+asv=read.table("~/median/median_euc.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
+taxa=read.table("~/median/median_taxa_euc.csv", sep=",", row.names=1, header=TRUE)
+meta=read.table('~/median/median_meta_euc.csv', sep=",", row.names=1, header=TRUE)
+```
+
+
+# Modify metadata file to add colum for bioreactor, time, replicate # 
+```{r}
+meta$sample_name=row.names(meta)
+meta=separate(data = meta, col = sample_name, into = c("experience", "short_sample_type", "time", "bioreactor", "replicate"), sep = "-")
+
+meta$Sample_type=factor(meta$Sample_type,levels = c("Rock", "Peatbog", "Groundwater")) 
+
+meta$position_pastille = as.character (meta$position_pastille)
+
+meta$sample_name=row.names(meta)
+
+meta$time<-gsub("T","",as.character(meta$time))
+meta$time = as.integer (meta$time)
+meta$position_pastille[meta$Sample_type == "Groundwater"] <- NA
+```
+
+#remove unwanted samples from analysis (Peatbog and B0)
+```{r, eval=FALSE}
+meta=subset(meta, !Sample_type=='Peatbog')
+#meta=subset(meta, !bioreactor=='B0')
+meta$Sample_type <- droplevels(meta$Sample_type)
+```
+
+```{r, eval=FALSE}
+#split meta into meta_1 and meta_2
+meta_1 <- subset(meta, experience == 'E1' & (short_sample_type == 'R' | bioreactor == 'B0'))
+meta_2 <- subset(meta, experience == 'E2'  & (short_sample_type == 'W' | bioreactor == 'B0'))
+```
+
+
+#Observed through time
+```{r}
+
+#create phyloseq object
+ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), sample_data(meta_1))
+
+richness_df_1 = cbind(estimate_richness(ps,measures = 'Observed'),
+            sample_data(ps))
+
+#check for normality
+hist(richness_df_1$Observed, breaks = 71) #good for both except one outlier for euc
+
+# plot richness through time
+ggplot(richness_df_1, aes(x = time, y = Observed)) +
+  geom_point() +
+  geom_line(aes(y = Observed, color = bioreactor, group = bioreactor), size = 1, linetype = "solid") + 
+#  ylim(0, 75) + #to visualize without the outlier
+  theme_classic() +
+  labs(title = "Richness through time",
+       x = "time",
+       y = "Richness (Observed)")
+```
+evenness through time
+```{r}
+
+#create phyloseq object
+ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), sample_data(meta_1))
+
+
+even_df_1 = cbind(estimate_richness(ps,measures =c('Shannon', 'Observed')),
+            sample_data(ps))
+
+#get Evenness
+even_df_1$Evenness <- even_df_1$Shannon / log(even_df_1$Observed)
+
+#check normality
+hist(even_df_1$Evenness) #has a heavy right tail for euc, better for euc, but still there
+
+# Evenness through time
+ggplot(even_df_1, aes(x = time, y = Evenness)) +
+  geom_point() +
+  geom_line(aes(y = Evenness, color = bioreactor, group = bioreactor), size = 1, linetype = "solid") + 
+
+  theme_classic() +
+  labs(title = "Evenness through time",
+       x = "time",
+       y = "Evenness  (Pielou's Index)")
+```
+#Shannon through time
+```{r}
+
+#create phyloseq object
+ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), sample_data(meta_1))
+
+shannon_df_1 = cbind(estimate_richness(ps,measures = 'Shannon'),
+            sample_data(ps))
+
+#check normality
+hist(shannon_df_1$Shannon) #good enough for both
+
+# Ajouter la colonne "time" depuis les métadonnées à la table de richesse
+shannon_df_1$time <- sample_data(ps)$time
+
+# Tracer la richesse à travers le time
+ggplot(shannon_df_1, aes(x = time, y = Shannon)) +
+  geom_point() +
+  geom_line(aes(y = Shannon, color = bioreactor, group = bioreactor), size = 1, linetype = "solid") + 
+
+  theme_classic() +
+  labs(title = "Shannon Through time",
+       x = "time",
+       y = "Alpha diversity (H)")
+```
+#
+#
+#exp. 2
+#Observedthrough time
+```{r}
+
+#create phyloseq object
+ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), sample_data(meta_2))
+
+richness_df_2 = cbind(estimate_richness(ps,measures = 'Observed'),
+            sample_data(ps))
+
+#check richness
+hist(richness_df_2$Observed) #good for euc, good enough for euc
+
+# plot richness through time
+ggplot(richness_df_2, aes(x = time - 21, y = Observed)) +
+  geom_point() +
+  geom_line(aes(y = Observed, color = bioreactor, group = bioreactor), size = 1, linetype = "solid") + 
+#  ylim(0, 300) + #to visualize without the outlier
+  theme_classic() +
+  labs(title = "Richness through time",
+       x = "time",
+       y = "Richness (Observed)")
+```
+evenness through time
+```{r}
+
+#create phyloseq object
+ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), sample_data(meta_2))
+
+even_df_2 = cbind(estimate_richness(ps,measures =c('Shannon', 'Observed')),
+            sample_data(ps))
+
+#get Evenness
+even_df_2$Evenness <- even_df_2$Shannon / log(even_df_2$Observed)
+
+#check normality
+hist(even_df_2$Evenness) #the normality of evenness for E1 and E2 are rather wonky, but not in the same way for euc, wonky for euc aswell
+
+# Richness through time
+ggplot(even_df_2, aes(x = time - 21, y = Evenness)) +
+  geom_point() +
+  geom_line(aes(y = Evenness, color = bioreactor, group = bioreactor), size = 1, linetype = "solid") + 
+
+  theme_classic() +
+  labs(title = "Evenness through time",
+       x = "time",
+       y = "Evenness (Pielou's Index)")
+```
+#Shannon through time
+```{r}
+
+#create phyloseq object
+ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), sample_data(meta_2))
+
+shannon_df_2 = cbind(estimate_richness(ps,measures = 'Shannon'),
+            sample_data(ps))
+
+hist(shannon_df_2$Shannon) #not normal for euc, good enough for euc
+
+# Ajouter la colonne "time" depuis les métadonnées à la table de richesse
+shannon_df_2$time <- sample_data(ps)$time
+
+# Tracer shannon à travers le time
+ggplot(shannon_df_2, aes(x = time - 21, y = Shannon)) +
+  geom_point() +
+  geom_line(aes(y = Shannon, color = bioreactor, group = bioreactor), size = 1, linetype = "solid") + 
+
+  theme_classic() +
+  labs(title = "Shannon Through time",
+       x = "time",
+       y = "Alpha diversity (H)")
+```
+
+```{r}
+wilcox.test(richness_df_1$Observed, richness_df_2$Observed)
+
+wilcox.test(even_df_1$Evenness, even_df_2$Evenness)
+```

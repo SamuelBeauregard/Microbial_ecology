@@ -1,0 +1,193 @@
+---
+title: "Spatial_connectivty"
+output: html_document
+---
+Load packages 
+```{r setup, include=FALSE}
+#devtools::install_github("cozygene/FEAST")
+library(FEAST)
+library(reshape2)
+library(gridExtra)
+library(scales)
+library(tidyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+```
+
+```{r setup, include=FALSE}
+
+path = "~/stats/FEAST/bac/sessile/output"
+
+#Prepare metadata for FEAST
+meta = read.csv("~/meta.csv", sep=";", row.names=1, header=TRUE)
+meta_pro <- meta[!(meta$is.neg == 'TRUE'),]
+meta_pro <-  as.data.frame(meta_pro)
+
+asv_prep=read.table("~/median/median_bac.csv", sep=",", row.names=1, header=TRUE) 
+asv_prep <- as.matrix(t(asv_prep))
+rownames(asv_prep) <- gsub("\\.", "-", rownames(asv_prep))
+
+
+#replace 'PB' for peatbogs by 'P'
+new_rownames <- gsub("-PB-", "-P-", rownames(meta_pro))
+
+# Assign the new row names to the dataframe
+rownames(meta_pro) <- new_rownames
+rownames(asv_prep) <- new_rownames
+```
+
+```{r, include=FALSE}
+#select the experience and type of communauty to analyse
+exp = 'E1'
+exp_to_remove = 'E2'
+type = 'Rock'
+other_type = 'Groundwater'
+
+#only keep the desired experience
+meta_pro$experience <- as.factor(substr(rownames(meta_pro), start = 1, stop = 2))
+meta_pro <- subset(meta_pro, experience == exp)
+
+rows_to_remove<- grep(exp_to_remove, rownames(asv_prep))
+asv_prep <- asv_prep[-rows_to_remove, ]
+asv_prep <- as.data.frame(asv_prep)
+
+#create new column for bioreactor
+meta_pro$bioreactor <- as.factor(substr(rownames(meta_pro), start = 10, stop = 11))
+asv_prep$bioreactor <- as.factor(substr(rownames(asv_prep), start = 10, stop = 11))
+
+#create new column for time
+meta_pro$Time <- as.integer(substr(rownames(meta_pro), start = 7, stop = 8))
+asv_prep$Time <- as.integer(substr(rownames(asv_prep), start = 7, stop = 8))
+  asv_prep <- asv_prep %>% select(Time, bioreactor, everything())
+
+#sort by decreasing order so it's easier to remove highest number at every iteration
+meta_pro <- meta_pro[order(meta_pro$Time, decreasing = TRUE),]
+asv_prep <- asv_prep[order(asv_prep$Time, decreasing = TRUE),]
+
+
+meta_pro$experience <- as.factor(substr(rownames(meta_pro), start = 1, stop = 2))
+```
+
+
+```{r, include=FALSE}
+for (bioreac in unique(meta_pro$bioreactor)) {
+  if (bioreac == "B0") next
+
+      meta_bioreac <- meta_pro
+asv_bioreac <- asv_prep
+  
+  for (day in unique(meta_pro$Time +1)) {
+    if (day == '1' | day == "2") next
+
+#skip day 21 of B1 as the rock amplification didn't work
+  if (day == '22'&& bioreac == 'B1') next # the appropriate day is the problematic day+1
+  
+    meta_prep <- meta_bioreac
+asv <- asv_bioreac
+
+
+
+
+#use only desired bioreactor
+meta_prep <- subset(meta_prep, bioreactor == bioreac | bioreactor == 'B0')
+asv <- subset(asv, bioreactor == bioreac | bioreactor == 'B0')
+
+meta_prep$Env <- meta_prep$Sample_type
+meta_prep <- meta_prep %>% select(Env, everything())
+
+#remove one day at each iteration
+    day <- day-1
+
+max_time <- day
+
+meta_prep$SourceSink <- NA
+
+  # Remove rows where the Time does not match any of the unique times from 'Rock' and 'Source'
+meta_prep <- meta_prep[!(meta_prep$Time > max_time), ]  
+
+#remove unwanted columns
+columns_to_keep <- c('Env', 'SourceSink')
+feast_meta <- subset(meta_prep, select = names(meta_prep) %in% columns_to_keep)
+
+
+#add id column
+feast_meta$id <- 1
+
+#format data
+feast_meta$Env <- as.factor(feast_meta$Env)
+feast_meta$SourceSink <- as.factor(feast_meta$SourceSink)
+
+
+# Find common row names between asv and feast_meta
+common_row_names <- intersect(rownames(asv), rownames(feast_meta))
+
+# Subset asv and feast_meta using the common row names
+asv <- asv[common_row_names, ]
+
+#reorder rows so they match in both df
+feast_meta <- feast_meta[order(rownames(feast_meta)), ]
+
+feast_meta$SampleID <- rownames(feast_meta)
+feast_meta$id <- as.integer(feast_meta$id)
+feast_meta <- feast_meta %>% select(SampleID, everything())
+feast_meta$Time <- as.integer(substr(rownames(feast_meta), start = 7, stop = 8))
+  feast_meta <- feast_meta[order(feast_meta$Time, decreasing = TRUE),]
+  
+  feast_meta$SourceSink <- ifelse(feast_meta$Time == max_time & feast_meta$Env == type, 'Sink', 'Source')
+  
+  feast_meta <- feast_meta %>% select(-Time)
+
+  
+  asv <- asv %>% select(-c(Time, bioreactor))
+  asv <- as.matrix(asv)
+    feast_meta <- droplevels(feast_meta)
+    
+    #to show progress
+    print(day)
+#run feast analysis
+ FEAST_output <- FEAST::FEAST(C = asv, metadata = feast_meta, different_sources_flag = 1, dir_path= paste(path, sep = '/'), outfile=paste('median', bioreac, day, "analysis", exp, type, sep = '_'))
+  }
+}
+```
+
+Combine FEAST output in one single data frame  #can restart from here, files are saved
+```{r}
+  
+path = "~/stats/FEAST/bac/sessile/output"
+
+file_names <- list.files(path, full.names = T)
+df=data.frame()
+  for (out_feast in unique(file_names)){
+  out_df=read.csv(out_feast,sep="\t")
+  out_df=out_df %>% tibble::rownames_to_column(var="Sink") # Set row name as first column values
+  df_melt=melt(out_df, id=c("Sink")) # Melt to long format
+  df = rbind(df,df_melt) # Populate empty dataframe 
+  } 
+
+df$bioreactor <- as.factor(substr(df$Sink, start = 10, stop = 11))
+
+df_clean=na.omit(df) # remove rows with NA 
+df_clean$variable= sub("_.*", "", df_clean$variable) #only keep type and day on the variable column
+df_clean$Sink=sub("_.*", "", df_clean$Sink) # Separate sink column
+df_clean$Sources <- df_clean$variable
+df_clean$Time= as.integer(substr(df_clean$Sources, start = 7, stop = 8)) # Add column for months  #replace with days2-24
+# Order sources and sink as a factor
+df_clean <- df_clean[order(substr(df_clean$Sink, start = 7, stop = 8), decreasing = TRUE), ] 
+df_clean$Sink <- as.factor(df_clean$Sink)
+df_clean$Sources <- as.factor(df_clean$Sources)
+
+```
+
+Generate table 
+```{r}
+
+df_clean$percentage=percent(df_clean$value, accuracy =0.01)
+df_clean$groups=gsub(".*? ","",df_clean$Sources) # Remove every characters before space
+agg_r=aggregate(df_clean$value, by=list(df_clean$groups), FUN=mean) 
+agg_r$percentage=percent(agg_r$x, accuracy=0.01)
+write.table(df_clean, "~/stats/FEAST/bac/sessile/table/median_df_clean.csv", quote=FALSE, sep=",", row.names = FALSE)
+
+
+```

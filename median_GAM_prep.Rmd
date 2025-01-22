@@ -1,0 +1,53 @@
+---
+title: "GAM_Shannon"
+output: html_document
+date: "2024-03-04"
+---
+
+#load packages
+```{r, echo = FALSE}
+
+#install.packages('GGally')
+
+library(tidyr)
+library(GGally)
+```
+
+#load data
+```{r}
+asv=read.table("~/median/median_bac.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
+taxa=read.table("~/median/median_taxa_bac.csv", sep=",", row.names=1, header=TRUE)
+meta=read.table('~/median/median_meta_bac.csv', sep=",", row.names=1, header=TRUE)
+```
+
+
+# Modify metadata file to add colum for bioreactor, time, replicate # 
+```{r}
+meta$sample_name=row.names(meta)
+meta=separate(data = meta, col = sample_name, into = c("experience", "short_sample_type", "time", "bioreactor", "replicate"), sep = "-")
+
+meta$Sample_type=factor(meta$Sample_type,levels = c("Rock", "Peatbog", "Groundwater")) 
+
+meta$position_pastille = as.character (meta$position_pastille)
+
+meta$sample_name=row.names(meta)
+
+meta$time<-gsub("T","",as.character(meta$time))
+meta$time = as.integer (meta$time)
+meta$position_pastille[meta$Sample_type == "Groundwater"] <- NA
+```
+
+#remove unwanted samples from analysis (Peatbog and B0)
+```{r, eval=FALSE}
+meta=subset(meta, !Sample_type=='Peatbog')
+meta=subset(meta, !bioreactor=='B0')
+meta$Sample_type <- droplevels(meta$Sample_type)
+```
+
+#Save files
+```{r, eval=FALSE}
+write.csv(asv, file = "~/stats/median_asv_GAM_bac.csv")
+write.csv(meta, file = "~/stats/median_meta_GAM_bac.csv")
+write.csv(taxa, file = "~/stats/median_taxa_GAM_bac.csv")
+
+```

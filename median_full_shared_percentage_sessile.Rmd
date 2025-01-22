@@ -1,0 +1,135 @@
+
+installing venn diagram package
+```{r}
+#install.packages("ggVennDiagram")
+#install.packages('plotly')
+
+library(tidyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+```
+
+```{r}
+asv=read.table( "~/stats/median_asv_MV_bac.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
+meta=read.table("~/stats/median_meta_MV_bac.csv", sep=",", row.names=1, header=TRUE)
+taxa=read.table("~/stats/median_taxa_MV_bac.csv", sep=",", row.names=1, header=TRUE)
+
+```
+
+Prep data
+```{r}
+# Create a new column using the first two terms of the sample's name
+asv_db <- as.data.frame(t(asv))
+asv_db$experience_short_sample_type <- (substr(rownames(asv_db), 1, 4))
+asv_db$experience_short_sample_type <- gsub('-', '_', asv_db$experience_short_sample_type)
+asv_db <- as.data.frame(asv_db) %>%
+dplyr::select(experience_short_sample_type, everything())  # Reorder columns
+
+# Create a new column using for the time of each sample
+asv_db$time <- (substr(rownames(asv_db), 6, 8))
+asv_db <- as.data.frame(asv_db) %>%
+dplyr::select(time, everything())  # Reorder columns
+
+# Create a new column using for the bioreactor of each sample
+asv_db$bioreactor <- (substr(rownames(asv_db), 10, 11))
+asv_db <- as.data.frame(asv_db) %>%
+dplyr::select(bioreactor, everything())  # Reorder columns
+```
+
+#Get the shared percentage through time
+```{r}
+# Filter for relevant sample types
+filtered_db <- asv_db %>% 
+  filter(experience_short_sample_type %in% c('E1_R', 'E1_W'))
+
+# Group by bioreactor and time
+grouped_db <- filtered_db %>%
+  group_by(bioreactor, time)
+
+#remove the first day as it doesn't have data for the planktonic community
+grouped_db <- subset(grouped_db, time != 'T01')
+
+# Function to calculate unique and shared percentages
+calculate_shared_unique_percentages <- function(df) {
+  asv_cols <- df %>% select(starts_with("ASV")) %>% colnames()
+  
+  # Split into E2_R and E2_W
+  df_r <- df %>% filter(experience_short_sample_type == 'E1_R')
+  df_w <- df %>% filter(experience_short_sample_type == 'E1_W')
+  
+  # Calculate number of ASVs > 0 for each sample type
+  count_r <- colSums(df_r[asv_cols] > 0)
+  count_w <- colSums(df_w[asv_cols] > 0)
+  
+  # Determine shared ASVs
+  shared_asvs <- sum(count_r > 0 & count_w > 0)
+  
+  # Determine ASVs unique to E2_R and E2_W
+  unique_r <- sum(count_r > 0 & count_w == 0)
+  unique_w <- sum(count_w > 0 & count_r == 0)
+  
+  # Calculate total unique ASVs (number of ASVs where at least one count is greater than 0)
+  total_asvs <- sum(count_r > 0 | count_w > 0)
+  
+  # Calculate the percentages
+  shared_percentage <- (shared_asvs / total_asvs) * 100
+  unique_r_percentage <- (unique_r / total_asvs) * 100
+  unique_w_percentage <- (unique_w / total_asvs) * 100
+  
+  return(data.frame(
+    shared_percentage = shared_percentage,
+    unique_r_percentage = unique_r_percentage,
+    unique_w_percentage = unique_w_percentage
+  ))
+}
+
+# Apply the function to each group and combine the results. Exclude T21 of B1 as amplification didn't work
+percentage_results <- grouped_db %>%
+  filter(!(bioreactor == 'B1' & time == 'T21')) %>% #to remove T21 of B1 as the amplification didn't work
+    summarise(
+    results = list(calculate_shared_unique_percentages(cur_data())),
+    .groups = 'drop'
+  ) %>%
+  unnest(cols = c(results)) # Unnest the results data frame to get separate columns
+
+```
+
+#draw a graph of the varying shared percentage through time for each bioreactor
+```{r}
+percentage_results$time <- gsub('T', '', percentage_results$time)
+
+ggplot(percentage_results, aes(x = time)) +
+  geom_line(aes(y = shared_percentage, color = bioreactor, group = bioreactor), size = 1, linetype = "solid") + 
+  geom_line(aes(y = unique_r_percentage, color = bioreactor, group = bioreactor), size = 1, linetype = "dashed") +
+  geom_line(aes(y = unique_w_percentage, color = bioreactor, group = bioreactor), size = 1, linetype = "dotted") +
+  labs(#title = "Shared and Unique ASV Percentages for E1_R and E1_W",
+       x = "Time",
+       y = "ASV Percentage",
+       color = "Bioreactor") +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    text = element_text(size = 12),
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(color = "black") # Set axis text color to black
+  ) +
+  scale_color_viridis_d(option = "D")
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) # Format y-axis as percentages
+
+
+
+# #save plot
+# ggsave(filename = "median_shared_asv_percentage_plot_bac.pdf", plot = last_plot(), path = "~/stats/shared_ASV/bac/planktonic", device = "pdf")
+
+print(last_plot())
+
+#saving the pdf doesn't work, but it appears on the console##############################
+ggsave(filename = "median_shared_asv_percentage_plot_bac.pdf", plot = last_plot(), path = "~/stats/shared_ASV/bac/sessile", device = "pdf")
+
+
+
+```
+

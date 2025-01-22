@@ -1,0 +1,63 @@
+---
+title: "median_depth"
+output: html_document
+date: "2024-07-11"
+---
+```{r}
+
+#BiocManager::install("microbiome")
+
+library(phyloseq)
+library(microbiome)
+
+xx=read.table('~/DADA2_output/euc/raw_asv_euc.csv', row.names=1, header=TRUE, sep = ',')
+
+#transpose the matrix as it's needed fo the script
+xx <- as.data.frame(t(xx))
+
+rowSums(xx)
+
+ps <- phyloseq(otu_table(t(xx), taxa_are_rows=TRUE))
+
+total=median(sample_sums(ps))
+
+standf = function(x, t=total) round(t * (x / sum(x)))
+
+phyloseq_object_rar = transform_sample_counts(ps, standf)
+
+otu_tab_median <- abundances(phyloseq_object_rar)
+
+otu_tab_median <- as.data.frame(otu_tab_median)
+ 
+colSums(otu_tab_median)
+
+#replace '.' with '-' in sample names
+colnames(otu_tab_median) <- gsub("\\.", "-", colnames(otu_tab_median))
+
+write.csv(otu_tab_median, file = '~/median/median_euc.csv')
+```
+
+in taxa, only keep the ASV that are still present in the pruned set of asv
+```{r}
+taxa = read.table("~/DADA2_output/euc/raw_taxa_euc.csv", sep=",", row.names=1, header=TRUE) 
+
+otu_row_names <- rownames(otu_tab_median)
+
+taxa <- taxa[rownames(taxa) %in% otu_row_names, ]
+
+write.csv(taxa, file = '~/median/median_taxa_euc.csv')
+```
+
+in meta, only keep the ASV that are still present in the pruned set of asv and use the values of the second day for the first when values are NA
+```{r}
+meta = read.table("~/DADA2_output/euc/raw_meta_euc.csv", sep=",", row.names=1, header=TRUE) 
+
+#replace the missing values of the first day for dic with the values of the second day
+meta$dic <- ifelse(is.na(meta$dic), dplyr::lead(meta$dic, 3), meta$dic)
+
+#replace the missing values of the first day for doc with the values of the second day
+meta$doc <- ifelse(is.na(meta$doc), dplyr::lead(meta$doc, 3), meta$doc)
+
+
+write.csv(meta, file = '~/median/median_meta_euc.csv')
+```

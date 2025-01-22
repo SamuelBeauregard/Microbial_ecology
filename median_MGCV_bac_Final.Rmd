@@ -1,0 +1,174 @@
+---
+title: "GAM_bac"
+output: html_document
+date: "2024-04-05"
+---
+
+#install required packages (only do once)
+```{r}
+# install.packages("mgcv")
+# install.packages('phyloseq')
+# install.packages('vegan')
+# install.packages('ggplot2')
+# install.packages('scales')
+# install.packages('gratia')
+#install.packages('MuMIn')
+#install.packages('DHARMa')
+```
+
+```{r}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(scales)
+library(tidyr)
+library(mgcv)
+library(gratia)
+library(MuMIn)
+library(mvgam)
+library(DHARMa)
+library(marginaleffects)
+```
+
+#load data
+```{r}
+asv=read.table( "~/stats/median_asv_GAM_bac.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
+meta=read.table("~/stats/median_meta_GAM_bac.csv", sep=",", row.names=1, header=TRUE)
+taxa=read.table("~/stats/median_taxa_GAM_bac.csv", sep=",", row.names=1, header=TRUE)
+
+```
+
+
+#Shannon index through time
+```{r, eval=FALSE}
+
+#create phyloseq object
+ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), sample_data(meta))
+
+#get shannon index
+shannon = cbind(estimate_richness(ps,measures = 'shannon'),
+            sample_data(ps))
+
+
+#assign factor instread of chr
+shannon$experience <- as.factor(shannon$experience)
+shannon$bioreactor <- as.factor(shannon$bioreactor)
+shannon$Sample_type <- as.factor(shannon$Sample_type)
+
+#select only the first experiment
+shannon1 <- shannon[shannon$experience == 'E1',]
+#select rocks from first experiment
+shannon1R <- shannon1[shannon1$short_sample_type == 'R',]
+
+#select only the second experiment
+shannon2 <- shannon[shannon$experience == 'E2',]
+
+shannon2W <- shannon2[shannon2$short_sample_type == 'W',]
+
+#renumber time so it goes from 1-24 instead of 22-45
+shannon2W$time <- shannon2W$time-21
+```
+
+#visualize data (verify homoscedasticity)
+```{r, eval=FALSE}
+hist(shannon1R$Shannon, labels = TRUE)
+summary(shannon1R$Shannon)
+#There's an outlier (E1-R-T04-B2-1, but I don't see any reasons to exclude it)
+
+hist(shannon2W$Shannon)
+summary(shannon2W$Shannon)
+#it seems normal enough, will try with gaussian family as it seems to be the one fitting the most
+```
+
+run model for sessile succession
+```{r, eval=FALSE}
+model1R_G_te <- gam(Shannon ~ te(dic, doc, bs = 'tp', k = 10)  + s(time) + s(time, by = bioreactor, bs = 'tp', k = 5, m = 1) + s(bioreactor, bs = "re"),  
+method = 'REML', family = Gamma(link = identity),  gamma = 1, select = TRUE, data = shannon1R)                     
+              
+```
+
+
+```{r, eval=FALSE}
+gam.check(model1R_G_te, rep = 1000)
+
+summary(model1R_G_te)
+
+draw(model1R_G_te, residuals = F)
+
+vis.gam(model1R_G_te, theta = 120, ticktype="detailed", type = 'response')
+
+p <- plot_predictions(model1R_G_te, condition = c('time', 'bioreactor'), type = 'response',  points = 1, rug = F) #to get the shared+group trends
+
+# Adjust the y-axis limits using ggplot2
+p + ylim(0.95, 5) + theme_minimal() +
+  theme(
+   panel.grid = element_blank(),
+    text = element_text(size = 12),
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(color = "black") # Set axis text color to black
+  ) +
+  scale_color_viridis_d(option = "D")
+```
+
+
+```{r, eval=FALSE}
+plot_predictions(model1R_G_te, condition = c('doc', 'dic'), type = 'response', newdata = shannon1R,  points = 1, rug = TRUE)
+
+plot_predictions(model1R_G_te, condition = c('dic', 'doc'), type = 'response', newdata = shannon1R,  points = 1, rug = TRUE)
+```
+```{r, eval=FALSE}
+vis.gam(model1R_G_te, type = 'response', ticktype = 'detailed', theta = 90, se = 1)
+```
+
+
+
+create model for planctonic community exp. 2 (recolonization of sterile water)
+  doc is removed as it is too highly correlated with time
+```{r, eval=FALSE}
+hist(shannon2W$Shannon)
+```
+
+```{r, eval=FALSE}
+shannon2W <- shannon2W %>% dplyr::select(c(dic, time, bioreactor, Shannon))
+
+
+model2W_G_te <- gam(Shannon ~ te(dic, bs = 'tp', k = 15) + s(time) + s(time, by = bioreactor, bs = 'tp', k = 15, m = 1) + s(bioreactor, bs = "re"),
+method = 'REML', family = Gamma(link = identity),  gamma = 1, select = TRUE, data = shannon2W)                                     
+```
+
+```{r, eval=FALSE}
+gam.check(model2W_G_te, rep = 1000)
+
+summary(model2W_G_te)
+
+draw(model2W_G_te, residuals = F)
+
+p <- plot_predictions(model2W_G_te, condition = c('time', 'bioreactor'), type = 'response',  points = 1, rug = F)
+
+# Adjust the y-axis limits using ggplot2
+p + ylim(0.95, 5) + theme_minimal() +
+  theme(
+   panel.grid = element_blank(),
+    text = element_text(size = 12),
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(color = "black") # Set axis text color to black
+  ) +
+  scale_color_viridis_d(option = "D")
+```
+
+```{r, eval=FALSE}
+plot_dic <- plot_predictions(model2W_G_te, condition = c('dic', 'bioreactor'), type = 'response',  points = 1, rug = F)
+
+plot_dic + 
+   theme_minimal() +
+  theme(
+   panel.grid = element_blank(),
+    text = element_text(size = 12),
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(color = "black") # Set axis text color to black
+  ) +
+  scale_color_viridis_d(option = "D")
+```

@@ -1,0 +1,134 @@
+---
+title: "plot_FEAST_euc"
+output: html_document
+date: "2024-06-07"
+---
+
+
+##replace euc with euc and vice-versa
+```{r}
+library(tidyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+```
+
+```{r}
+#type <- 'planktonic' will need a rewrite if I want to use thi instead of ctrl-F
+
+df_clean = read.csv("~/stats/FEAST/euc/plankto/table/median_df_clean.csv", sep=",", header=TRUE, stringsAsFactors = TRUE)
+  df_clean <- df_clean %>% select(-c(variable, value, groups))#only keep the rows needed
+  #remove the % sign for percentage column
+  df_clean$percentage <- as.numeric(gsub("%", "", df_clean$percentage))
+  df_clean$Time <- ifelse(df_clean$Time > 0, df_clean$Time - 20, df_clean$Time)
+```
+
+
+
+plot for each day (if needed)
+```{r}
+# 
+# # Ensure Time is treated as a factor for correct ordering
+# df_clean$Time <- factor(df_clean$Time, levels = sort(unique(df_clean$Time)))
+# 
+# # For loop over unique days in the Sink column
+# unique_days <- unique(as.integer(substr(df_clean$Sink, start = 7, stop = 8)))
+# 
+# for (day in unique_days) {
+#   
+#   # Subset data for the specific day
+#   day_pattern <- sprintf("%02d", day)
+#   B <- subset(df_clean, grepl(day_pattern, df_clean$Sink))
+#   
+#   # Debug: print the subset data for the current day
+#   print(paste("Processing day:", day))
+#   print(B)
+#   
+#   # Separate data for rock (R), groundwater (GW), Peat_Bog (PB), and Unknown (UK)
+#   B$SourceType <- ifelse(grepl(".R.", B$Sources), "R", 
+#                          ifelse(grepl(".W.", B$Sources), "GW", 
+#                                 ifelse(grepl(".P.", B$Sources), "PB", 'UK')))
+#   B$SourceType <- as.factor(B$SourceType)
+#   
+#   B$Time <- droplevels(B$Time)
+#   
+#   # Calculate the cumulative sum of percentages for each bioreactor, SourceType, and Time
+#   B <- B %>%
+#     group_by(bioreactor, SourceType, Time) %>%
+#     summarise(cum_percentage = sum(percentage), .groups = 'drop') %>%
+#     arrange(bioreactor, SourceType, Time) %>%
+#     group_by(bioreactor, SourceType) %>%
+#     mutate(cum_percentage = cumsum(cum_percentage))
+# 
+#   
+#   # Create the plot
+#   plot_feast <- ggplot(B, aes(x = Time, y = cum_percentage, color = SourceType, group = interaction(bioreactor, SourceType))) +
+#     geom_line(aes(linetype = bioreactor), size = 1) +
+#     geom_point(aes(shape = bioreactor), size = 3) +
+#     scale_x_discrete(limits = levels(B$Time), expand = c(0, 0)) +
+#     scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 100)) +
+#     labs(title = paste("Origin of euc community for day", (as.integer(day)-20)), y = "Cumulative Percentage", x = "Time") +
+#     theme_minimal() +
+#     theme(
+#       text = element_text(size = 12),
+#       legend.justification = "center",
+#       legend.position = "bottom", 
+#       plot.title = element_text(hjust = 0.5)
+#     )
+#   
+#   # Print the plot
+#   print(plot_feast)
+#   path <- '~/stats/FEAST/euc/plankto/plot'
+#   # Save the plot
+#   plot_name <- paste('median', (day-20), 'plot_feast_euc_planktonic', sep = '_')
+#   ggsave(filename = paste0(plot_name, ".pdf"), plot = plot_feast, path = path, device = 'pdf')
+# }
+```
+
+#sum influence of rocks/groundwater/unknown for each day
+```{r}
+# Ensure Time is treated as a factor for correct ordering
+df_clean$Time <- factor(df_clean$Time, levels = sort(unique(df_clean$Time)))
+
+df_clean$Time_sink <- as.integer(substr(df_clean$Sink, start = 7, stop = 8))-21
+
+# Separate data for rock (R), groundwater (GW), groundwater from sampling (GW_0) Peat_Bog (PB), and Unknown (UK)
+df_clean$SourceType <- ifelse(grepl(".R.", df_clean$Sources), "R", 
+                ifelse(grepl(".W.", df_clean$Sources) & df_clean$Time != 0, "GW",
+                           ifelse(grepl(".W.", df_clean$Sources) & df_clean$Time == 0, "GW_0",                                     ifelse(grepl(".P.", df_clean$Sources), "PB", 'UK'))))
+
+df_clean$SourceType <- as.factor(df_clean$SourceType)
+
+# Summarize cumulative percentages for each bioreactor and SourceType across all days
+aggregated_data <- df_clean %>%
+  group_by(bioreactor, SourceType, Time_sink) %>%
+  summarise(sum_percentage = sum(percentage), .groups = 'drop') %>%
+  arrange(bioreactor, SourceType, Time_sink)
+
+aggregated_data$Time_sink <- as.factor(aggregated_data$Time_sink)
+
+# Create the plot
+plot_feast_agg <- ggplot(aggregated_data, aes(x = Time_sink, y = sum_percentage, color = SourceType, group = interaction(bioreactor, SourceType))) +
+  geom_line(aes(linetype = bioreactor), size = 1) +
+  geom_point(aes(shape = bioreactor), size = 3) +
+  scale_x_discrete(limits = levels(aggregated_data$Time_sink), expand = c(0, 0)) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 100)) +
+  labs( y = "Cumulative Percentage", x = "Time") + #title = paste("Summed Cumulative Percentages for planktonic euc Community Across All Days"),
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    legend.justification = "center",
+    legend.position = "bottom", 
+    plot.title = element_text(hjust = 0.5)
+  )
+
+# Print the plot
+print(plot_feast_agg)
+
+# Save the plot
+path <- '~/stats/FEAST/euc/plankto/plot'
+plot_name <- 'median_summed_plot_feast_euc_combined_planktonic'
+ggsave(filename = paste0(plot_name, ".pdf"), plot = plot_feast_agg, path = path, device = 'pdf')
+
+```
