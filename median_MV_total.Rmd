@@ -1,5 +1,5 @@
 ---
-title: "MV_euc"
+title: "MV_bac"
 output:
   html_document: default
   pdf_document: default
@@ -13,7 +13,7 @@ Load package and set-up directory
 #install.packages('dendextend')
 
 
-knitr::opts_knit$set(root.dir = "~/stats/euc")
+knitr::opts_knit$set(root.dir = "~/stats/bac")
 library(phyloseq)
 library(vegan)
 library(ggplot2)
@@ -40,14 +40,14 @@ library(dendextend)
 
 #load data
 ```{r}
-asv=read.table( "~/stats/median_asv_MV_euc.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
-meta=read.table("~/stats/median_meta_MV_euc.csv", sep=",", row.names=1, header=TRUE, stringsAsFactors = TRUE)
+asv=read.table( "~/stats/median_asv_MV_bac.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
+meta=read.table("~/stats/median_meta_MV_bac.csv", sep=",", row.names=1, header=TRUE, stringsAsFactors = TRUE)
  #change time for exp. 2 from 22-45 to 1-24
  meta$time <- ifelse(meta$experience == 'E2', meta$time - 21, meta$time)
 
  meta <- meta %>% select(-c(X, X.1, X.2, X.3, X.4))
 
- taxa=read.table("~/stats/median_taxa_MV_euc.csv", sep=",", row.names=1, header=TRUE)
+ taxa=read.table("~/stats/median_taxa_MV_bac.csv", sep=",", row.names=1, header=TRUE)
 
 ```
 
@@ -60,9 +60,9 @@ meta_E1 <- subset(meta, meta$experience == 'E1' & short_sample_type == 'R')
 meta_E2 <- subset(meta, meta$experience == 'E2' & short_sample_type == 'W')
 
 
-ggpairs(meta_E1, columns = c('dic_raw', 'doc_raw', 'time', 'ph_raw', 'do_percent_raw', 'bioreactor'), axisLabels = 'show', ggplot2::aes(colour = bioreactor, ))
+corr_E1 <- ggpairs(meta_E1, columns = c('dic_raw', 'doc_raw', 'time', 'ph_raw', 'do_percent_raw', 'bioreactor'), axisLabels = 'show', ggplot2::aes(colour = bioreactor, ))
 
-ggpairs(meta_E2, columns = c('dic_raw', 'doc_raw', 'time', 'ph_raw', 'do_percent_raw', 'bioreactor'), ggplot2::aes(colour = bioreactor))
+corr_E2 <- ggpairs(meta_E2, columns = c('dic_raw', 'doc_raw', 'time', 'ph_raw', 'do_percent_raw', 'bioreactor'), ggplot2::aes(colour = bioreactor))
 
 sum_E1 <- summary(meta_E1)
 aov(meta_E1$dic_raw ~ meta_E1$bioreactor)
@@ -72,6 +72,17 @@ sum_E2 <- summary(meta_E2)
 write.csv(sum_E2, '~/stats/sum_E2.csv')
 
 #DOC and time are strongly correlated for exp. 2 so DOC won't be included in the dbRDA
+
+corr_E1
+
+#save both ggpairs
+ggsave(filename = "corr_E1.pdf", plot = corr_E1, path = "~/stats/fig_mat_supp/", device = "pdf", width = 10, height = 7.5)
+
+corr_E2
+
+#save both ggpairs
+ggsave(filename = "corr_E2.pdf", plot = corr_E2, path = "~/stats/fig_mat_supp/", device = "pdf", width = 10, height = 7.5)
+
 ```
 
 
@@ -93,7 +104,7 @@ ps <- phyloseq(
 
   # Perform PCoA using the "bray" dissimilarity metric
   ordu <- ordinate(ps, 'NMDS', 'bray')
-    p <- plot_ordination(ps, ordu, color = "time", shape = "experience_short_sample_type", title = paste('NMDS all euc samples', '      ', 'stress =', signif(ordu$stress, 3), sep = '' )) +
+    p <- plot_ordination(ps, ordu, color = "time", shape = "experience_short_sample_type", title = paste('NMDS all bac samples', '      ', 'stress =', signif(ordu$stress, 3), sep = '' )) +
        theme_minimal() +
   theme(
    panel.grid = element_blank(),
@@ -108,10 +119,10 @@ print(p)
   
   
     # Save the plot as a separate image file
-  ggsave(("~/stats/NMDS/euc/NMDS_euc_all.pdf"), p, width = 8, height = 6, dpi = 300)
+  ggsave(("~/stats/NMDS/bac/NMDS_bac_all.pdf"), p, width = 8, height = 6, dpi = 300)
 ```
 
-# NMDS for loop for different sample_types and experiment 
+# NMDS bray-Curtis for loop for different sample_types and experiment 
 ```{r} 
 
 # Create an empty list to store the plots
@@ -136,26 +147,81 @@ for (type_exp in unique(meta$experience_short_sample_type)) {
   ordu <- ordinate(ps, 'NMDS', 'bray')
   
   # Create the NMDS plot
-  p <- plot_ordination(ps, ordu, color = "time", shape = "bioreactor"#, title = paste('NMDS ', type_exp, ' euc', '        ', 'stress =', signif(ordu$stress, 3), sep = '' )
+  p <- plot_ordination(ps, ordu, color = "time", shape = "bioreactor"#, title = paste('NMDS ', type_exp, ' bac', '        ', 'stress =', signif(ordu$stress, 3), sep = '' )
                        )+
- theme_minimal() +
+ theme_classic() +
+     geom_hline(yintercept = 0, linetype = "solid", color = "gray") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "gray") +
+    theme(axis.line.x  = element_line(color = "black"), axis.line.y  = element_line(color = "black"))+
+    geom_point(size = 5) +
   theme(
-   panel.grid = element_blank(),
-    text = element_text(size = 12),
+    text = element_text(size = 24),
     plot.title = element_text(hjust = 0.5),
     axis.text = element_text(color = "black") # Set axis text color to black
   ) +
     scale_fill_viridis_c(alpha = 1, begin = 0, end = 1, direction = 1, option = "D", aesthetics = "colour")
   
 
-  # Save the plot in the plot_list with a name starting with "PCoA_euc_"
-  plot_list[[paste0("NMDS_euc_", type_exp)]] <- p
+  # Save the plot in the plot_list with a name starting with "NMDS_bac_"
+  plot_list[[paste0("NMDS_bac_", type_exp)]] <- p
   # 
   print(p)
   # 
   # Save the plot as a separate image file
-  filename <- paste0("NMDS_euc_", type_exp, ".pdf")
-  ggsave(paste0("~/stats/NMDS/euc/NMDS_euc_", type_exp, ".pdf"), p, width = 8, height = 6, dpi = 300)
+  filename <- paste0("NMDS_bac_", type_exp, ".pdf")
+  ggsave(paste0("~/stats/NMDS/bac/bac_NMDS_", type_exp, ".pdf"), p, width = 8, height = 6, dpi = 300)
+}
+
+```
+
+# NMDS hellinger for loop for different sample_types and experiment 
+```{r} 
+
+# Create an empty list to store the plots
+plot_list <- list()
+#type_exp == 'E2_W'
+# Loop through unique values of "type_exp"
+for (type_exp in unique(meta$experience_short_sample_type)) {
+#type_exp = 'E1_R'
+    # Subset the data for the current "type_exp"
+  meta_sample <- subset(meta, experience_short_sample_type == type_exp)
+  
+  # Create a phyloseq object using the subsetted data
+asv_hellinger <- decostand(asv, method="hellinger") #only if want pcoa on hellinger instead of bray  
+  ps <- phyloseq(
+    otu_table(asv_hellinger, taxa_are_rows = TRUE),
+    tax_table(as.matrix(taxa)),
+    sample_data(meta_sample)
+  )
+# 
+#   
+    # Perform NMDS using the "euclidean" dissimilarity metric (the data is already transformed by decostand above)
+  ordu <- ordinate(ps, 'NMDS', 'euclidean')
+  
+  # Create the NMDS plot
+  p <- plot_ordination(ps, ordu, color = "time", shape = "bioreactor"#, title = paste('NMDS ', type_exp, ' bac', '        ', 'stress =', signif(ordu$stress, 3), sep = '' )
+                       )+
+ theme_classic() +
+     geom_hline(yintercept = 0, linetype = "solid", color = "gray") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "gray") +
+    theme(axis.line.x  = element_line(color = "black"), axis.line.y  = element_line(color = "black"))+
+    geom_point(size = 5) +
+  theme(
+    text = element_text(size = 24),
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(color = "black") # Set axis text color to black
+  ) +
+    scale_fill_viridis_c(alpha = 1, begin = 0, end = 1, direction = 1, option = "D", aesthetics = "colour")
+  
+
+  # Save the plot in the plot_list with a name starting with "NMDS_bac_"
+  plot_list[[paste0("NMDS_bac_", type_exp)]] <- p
+  # 
+  print(p)
+  # 
+  # Save the plot as a separate image file
+  filename <- paste0("NMDS_bac_", type_exp, ".pdf")
+  ggsave(paste0("~/stats/NMDS/bac/bac_NMDS_hellinger_", type_exp, ".pdf"), p, width = 8, height = 6, dpi = 400)
 }
 
 ```
@@ -236,26 +302,28 @@ plot_data <- cbind.data.frame(site_scores_df, subset_meta)
   
   
 dbrdarock <- ggplot() +
-  geom_hline(yintercept = 0, linetype = "solid", color = "gray") +
-  geom_vline(xintercept = 0, linetype = "solid", color = "gray") +
-  geom_point(data = plot_data, aes(x = CAP1, y = CAP2, shape = bioreactor, color = time), size = 2) +
+  geom_hline(yintercept = 0, linetype = "solid", color = "gray", size = 1) +
+  geom_vline(xintercept = 0, linetype = "solid", color = "gray", size = 1) +
+  geom_point(data = plot_data, aes(x = CAP1, y = CAP2, shape = bioreactor, color = time), size = 3) +
   geom_segment(data = variable_scores_df, aes(x = 0, y = 0, xend = CAP1, yend = CAP2), 
-               arrow = arrow(length = unit(0.15, "cm")), color = "black") +
+               arrow = arrow(length = unit(0.15, "cm")), color = "black", size = 1) +
   
   # Add text labels for environmental variable names
   geom_text(
     data = variable_scores_df,
     aes(x = CAP1, y = CAP2, label = rownames(variable_scores_df)),
-    vjust = -1, hjust = 0.5,
+    vjust = -1, hjust = 0.5, size = 7,
     color = "#c45015"
   ) +
 
   # scale_color_manual(values = c("forestgreen","goldenrod3","firebrick3", "deepskyblue3" ), name = "bioreactor",) + 
   xlab(paste(dim_names[1], " (", round(var_explained[1], 2), "%)")) + #naming the x axis
   ylab(paste(dim_names[2], " (", round(var_explained[2], 2), "%)")) + #naming the y axis
-#  geom_text(data = plot_data, aes(x = CAP1, y = CAP2, label = sample_name), hjust = 0.5, vjust = -0.5, size = 3.5) + #adding the sample name
-  theme_minimal() +
-  theme(text = element_text(size = 15))
+  geom_point(size = 5) +
+    theme_classic() +
+  theme(text = element_text(size = 18), 
+        ) + # axis.line = element_line(size = 1)#make the axis thicker
+   scale_fill_viridis_c(alpha = 1, begin = 0, end = 1, direction = 1, option = "D", aesthetics = "colour")
 
 # Store the results in the list
 dbRDA_exp_type[[i]] <- list(
@@ -273,12 +341,15 @@ if (type_exp == 'E2_W') { #unsure if it's the proper type_exp
      Venn_varpart <-  plot(varpart_full, bg = c("hotpink","skyblue"), Xnames = c('DIC', 'DOC', 'Time', 'Bioreactor'))
 }  
 
+#visualize the plots
+print(dbrdarock)
+
   # Set path for saving plots
-plot_path="~/stats/dbRDA/euc/"
+plot_path="~/stats/dbRDA/bac/"
 
   #save plots
-name <- paste('median_', type_exp, "_dbRDA_results_", i, ".jpeg", sep = "")
-ggsave(file.path(plot_path, name), width = 6, height = 4, plot = dbrdarock)
+name <- paste('bac_median_', type_exp, "_dbRDA_results_", i, ".pdf", sep = "")
+ggsave(file.path(plot_path, name), width = 8, height = 6, plot = dbrdarock, device = 'pdf')
 }
 
 ```
@@ -306,7 +377,7 @@ for (type_exp in unique(meta$experience_short_sample_type)) {
    
   
   # Set path for saving plots
-   plot_path = "~/stats/dbRDA/euc/anova_summary"
+   plot_path = "~/stats/dbRDA/bac/anova_summary"
 
    # Save files for anova
    name <- paste(type_exp, "_median_anova_results_", i, ".csv", sep = "")
@@ -333,11 +404,13 @@ asv_dend$time <- as.integer(substr(asv_dend$name, 7, 8))
 asv_dend$time <- ifelse(grepl('E2_W', asv_dend$experience_short_sample_type_bio), asv_dend$time - 21, asv_dend$time)
 
 asv_dend$time <- ifelse(asv_dend$time < 10, paste('0', asv_dend$time, sep = ''), asv_dend$time)
-asv_dend$time <- paste('T', asv_dend$time, sep  = '')
 ```
 
 forloop of dendrograms for every bioreactors and every day
 ```{r}
+#load required package
+library(ggdendro)
+
 
 i = 0
 # Loop through unique values of "experience_short_sample_type"
@@ -362,8 +435,26 @@ veg <- vegdist(sub_asv)
 
 hcl <- hclust(veg)
 
-plot_test <- as.dendrogram(hcl)
-plot(plot_test, ylab = "Dissimilarity", xlab = 'time', ylim = c(0, 1), main = den)
+dendro <- ggdendrogram(hcl) +
+  geom_line(size = 5) +
+  theme_minimal() +
+   theme(
+      # Y-Axis: Keep it visible
+    axis.text.y = element_text(size = 18, color = 'black'), 
+    axis.ticks.y = element_line(color = "black"), 
+    axis.line.y = element_line(color = "black"), 
+   panel.grid = element_blank(),
+   text = element_text(size = 18),
+   axis.text.x = element_text(angle=90, color = 'black'),
+   axis.title.x = element_text(margin = margin(t = 15))  # Move x-axis title lower
+   )+
+  ylab("Height")+
+  xlab("Time (days)") +
+  ylim (0, 1)
 
+print(dendro)
+
+#save plot
+ggsave(paste("bac_dend_", den, '.pdf'), plot = dendro, path = "~/stats/dend/bac/", device = "pdf", width = 8, height = 6)
 }
 ```

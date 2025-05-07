@@ -110,17 +110,18 @@ plot_feast_agg <- ggplot(aggregated_data, aes(x = Time_sink, y = sum_percentage,
   geom_line(aes(linetype = bioreactor), size = 1) +
   geom_point(aes(shape = bioreactor), size = 3) +
   scale_x_discrete(limits = levels(aggregated_data$Time_sink), expand = c(0, 0), labels = c(2:24)) +  # Set labels on x-axis
-  scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 100)) +
-  labs( #title = paste("Summed Cumulative Percentages for euc", type, "Community Across All Days"), 
-       y = "Cumulative Percentage", x = "Time") +
-  theme_minimal() +
+#  scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 100)) +
+ labs( y = "Contribution of each source (%)", x = "Time (days)")+
+  theme_classic() +
   theme(
-    text = element_text(size = 10),
+     panel.grid = element_blank(),
+    text = element_text(size = 16),
     axis.text.x = element_text(angle = 0, hjust = 0.5),  # Adjust the x-axis labels formatting
 #    legend.justification = "center",
-    legend.position = "none", 
+    legend.position = "bottom", 
 #    plot.title = element_text(hjust = 0.5)
-  )
+  ) +
+    scale_fill_viridis_d(alpha = 1, begin = 0, end = 1, direction = 1, option = "D", aesthetics = "colour")
 
 
 # Print the plot
@@ -129,6 +130,6 @@ print(plot_feast_agg)
 # Save the plot
 path <- paste('~/stats/FEAST/euc/', type, '/plot', sep = '')
 plot_name <- paste('median_summed_plot_feast_euc_combined', type, sep= '_')
-ggsave(filename = paste0(plot_name, ".pdf"), plot = plot_feast_agg, path = path, device = 'pdf')
+ggsave(filename = paste0(plot_name, ".pdf"), plot = plot_feast_agg, path = path, device = 'pdf', height = 6, width = 10)
 
 ```

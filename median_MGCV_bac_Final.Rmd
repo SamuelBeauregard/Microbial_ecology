@@ -40,7 +40,7 @@ taxa=read.table("~/stats/median_taxa_GAM_bac.csv", sep=",", row.names=1, header=
 
 
 #Shannon index through time
-```{r, eval=FALSE}
+```{r}
 
 #create phyloseq object
 ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), sample_data(meta))
@@ -70,7 +70,7 @@ shannon2W$time <- shannon2W$time-21
 ```
 
 #visualize data (verify homoscedasticity)
-```{r, eval=FALSE}
+```{r}
 hist(shannon1R$Shannon, labels = TRUE)
 summary(shannon1R$Shannon)
 #There's an outlier (E1-R-T04-B2-1, but I don't see any reasons to exclude it)
@@ -81,43 +81,78 @@ summary(shannon2W$Shannon)
 ```
 
 run model for sessile succession
-```{r, eval=FALSE}
+```{r}
 model1R_G_te <- gam(Shannon ~ te(dic, doc, bs = 'tp', k = 10)  + s(time) + s(time, by = bioreactor, bs = 'tp', k = 5, m = 1) + s(bioreactor, bs = "re"),  
 method = 'REML', family = Gamma(link = identity),  gamma = 1, select = TRUE, data = shannon1R)                     
               
 ```
 
 
-```{r, eval=FALSE}
+```{r}
 gam.check(model1R_G_te, rep = 1000)
 
 summary(model1R_G_te)
 
-draw(model1R_G_te, residuals = F)
 
-vis.gam(model1R_G_te, theta = 120, ticktype="detailed", type = 'response')
-
-p <- plot_predictions(model1R_G_te, condition = c('time', 'bioreactor'), type = 'response',  points = 1, rug = F) #to get the shared+group trends
-
-# Adjust the y-axis limits using ggplot2
-p + ylim(0.95, 5) + theme_minimal() +
+summ <- draw(model1R_G_te, residuals = F, wrap = F, rug = F)
+gen_trend_gam <- summ[[2]] + 
+    theme_classic() +
+  geom_line(size = 1.5)+
   theme(
-   panel.grid = element_blank(),
-    text = element_text(size = 12),
-    legend.position = "bottom",
-    plot.title = element_text(hjust = 0.5),
-    axis.text = element_text(color = "black") # Set axis text color to black
-  ) +
-  scale_color_viridis_d(option = "D")
+    panel.grid = element_blank(),
+    text = element_text(size = 24),)+
+  xlab('Time (days)')
+
+gen_trend_gam
+
+ #save gen trend
+ggsave(filename = "bac_gen_trend_GAM_E1_sessile.pdf", plot = gen_trend_gam, path = "~/stats/GAM/bac/", device = "pdf")
 ```
 
 
-```{r, eval=FALSE}
+```{r}
+# Set default sizes for points before calling plot_predictions
+update_geom_defaults("point", list(size = 3))  # Increase point size
+
+p <- plot_predictions(model1R_G_te, condition = c('time', 'bioreactor'), type = 'response',  points = 1, rug = F)  #to get the shared+group trends 
+  
+# Modify the lines within the ggplot object
+p$layers <- lapply(p$layers, function(layer) {
+  if ("GeomLine" %in% class(layer$geom)) {  # Check if it's a line layer
+    layer$aes_params$size <- 2  # Increase line thickness
+  }
+  return(layer)
+})
+
+# Adjust the y-axis limits using ggplot2
+gen <- p  + ylim(0.95, 5) + theme_classic() +
+  ylab('Alpha diversity (H)')+
+  xlab("Time (days)") +
+  theme(
+   panel.grid = element_blank(),
+    text = element_text(size = 24),
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(color = "black")# Set axis text color to black
+   ) +
+  scale_color_viridis_d(option = "D") 
+
+
+gen
+
+ggsave(filename = "bac_GAM_E1_sessile.pdf", plot = gen, path = "~/stats/GAM/bac/", device = "pdf", width = 10, height = 7.5)
+```
+
+
+```{r}
+vis.gam(model1R_G_te, theta = 120, ticktype="detailed", type = 'response')
+
 plot_predictions(model1R_G_te, condition = c('doc', 'dic'), type = 'response', newdata = shannon1R,  points = 1, rug = TRUE)
 
 plot_predictions(model1R_G_te, condition = c('dic', 'doc'), type = 'response', newdata = shannon1R,  points = 1, rug = TRUE)
 ```
-```{r, eval=FALSE}
+
+```{r}
 vis.gam(model1R_G_te, type = 'response', ticktype = 'detailed', theta = 90, se = 1)
 ```
 
@@ -125,11 +160,11 @@ vis.gam(model1R_G_te, type = 'response', ticktype = 'detailed', theta = 90, se =
 
 create model for planctonic community exp. 2 (recolonization of sterile water)
   doc is removed as it is too highly correlated with time
-```{r, eval=FALSE}
+```{r}
 hist(shannon2W$Shannon)
 ```
 
-```{r, eval=FALSE}
+```{r}
 shannon2W <- shannon2W %>% dplyr::select(c(dic, time, bioreactor, Shannon))
 
 
@@ -137,32 +172,65 @@ model2W_G_te <- gam(Shannon ~ te(dic, bs = 'tp', k = 15) + s(time) + s(time, by 
 method = 'REML', family = Gamma(link = identity),  gamma = 1, select = TRUE, data = shannon2W)                                     
 ```
 
-```{r, eval=FALSE}
+```{r}
 gam.check(model2W_G_te, rep = 1000)
 
 summary(model2W_G_te)
 
 draw(model2W_G_te, residuals = F)
 
-p <- plot_predictions(model2W_G_te, condition = c('time', 'bioreactor'), type = 'response',  points = 1, rug = F)
 
-# Adjust the y-axis limits using ggplot2
-p + ylim(0.95, 5) + theme_minimal() +
+summ <- draw(model2W_G_te, residuals = F, wrap = F, rug = F)
+gen_trend_gam <- summ[[2]] +  
+  theme_classic() +
+    geom_line(size = 1.5)+
   theme(
-   panel.grid = element_blank(),
-    text = element_text(size = 12),
-    legend.position = "bottom",
-    plot.title = element_text(hjust = 0.5),
-    axis.text = element_text(color = "black") # Set axis text color to black
-  ) +
-  scale_color_viridis_d(option = "D")
+    panel.grid = element_blank(),
+    text = element_text(size = 24),)+
+  xlab('Time (days)')
+
+gen_trend_gam
+ #save gen trend
+ggsave(filename = "bac_gen_trend_GAM_2W_plankto.pdf", plot = gen_trend_gam, path = "~/stats/GAM/bac/", device = "pdf")
 ```
 
-```{r, eval=FALSE}
+```{r}
+p <- plot_predictions(model2W_G_te, condition = c('time', 'bioreactor'), type = 'response',  points = 1, rug = F)
+
+# Modify the lines within the ggplot object
+p$layers <- lapply(p$layers, function(layer) {
+  if ("GeomLine" %in% class(layer$geom)) {  # Check if it's a line layer
+    layer$aes_params$size <- 2  # Increase line thickness
+  }
+  return(layer)
+})
+
+# Adjust the y-axis limits using ggplot2
+gen <- p  + ylim(0.95, 5)  + theme_classic() +
+   xlab("Time (days)") +
+  ylab('Alpha diversity (H)')+
+  theme(
+   panel.grid = element_blank(),
+    text = element_text(size = 24),
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(color = "black") # Set axis text color to black
+  ) +
+  scale_color_viridis_d(option = "D")
+
+gen
+
+#save
+ggsave(filename = "bac_GAM_E2_plankto.pdf", plot = gen, path = "~/stats/GAM/bac/", device = "pdf", width = 10, height = 7.5)
+```
+
+```{r}
 plot_dic <- plot_predictions(model2W_G_te, condition = c('dic', 'bioreactor'), type = 'response',  points = 1, rug = F)
 
-plot_dic + 
-   theme_minimal() +
+plot <- plot_dic + 
+   theme_classic() +
+  xlab('DIC (mg/L)') +
+  ylab('Alpha diversity (H)')+
   theme(
    panel.grid = element_blank(),
     text = element_text(size = 12),
@@ -171,4 +239,6 @@ plot_dic +
     axis.text = element_text(color = "black") # Set axis text color to black
   ) +
   scale_color_viridis_d(option = "D")
+
+ggsave(filename = "DIC_E2_GW_bac.pdf", plot = plot, path = "~/stats/GAM/bac/", device = "pdf", width = 10, height = 7.5)
 ```

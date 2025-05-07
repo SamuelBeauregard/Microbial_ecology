@@ -17,6 +17,7 @@ R version 4.3.1
 # install.packages("stringr")
 # install.packages("ggtext")
 # install.packages("DT")
+#install.packages('Cairo')
 ```
 ## Loading the libraries
 ```{r, message=FALSE, warning=FALSE}
@@ -31,6 +32,7 @@ library(tidyr) # Dataframe manipulation (function "separate")
 library(stringr) # Makes working with strings as easy as possible (function "str_replace")
 library(ggtext) # Allow the use of markdown text (used to make names italic)
 library(DT)# Make beautiful table 
+library(Cairo)
 ```
 
 
@@ -43,7 +45,7 @@ meta=read.table('~/median/median_meta_bac.csv', sep=",", row.names=1, header=TRU
 
 Remove unwanted sample and column from the sample metadata file 
 ```{r, echo=FALSE}
-#meta=subset(meta, !Sample_type=='Peatbog') # Remove sample from the peatbog
+meta=subset(meta, !Sample_type=='Peatbog') # Remove sample from the peatbog
 meta=subset(meta, select=-c(is.neg))
 meta$position_pastille[meta$Sample_type == "Groundwater"] <- NA
 ```
@@ -72,7 +74,7 @@ meta$time <- as.numeric(gsub('T', '', meta$time))
 meta$time <- ifelse(meta$experience == 'Experience 2' & meta$time != '0', meta$time - 21, meta$time)
 meta$time <- ifelse(meta$time < 10, paste(0, meta$time, sep = ''), meta$time)
 #meta$time <- order(meta$time)
-meta$time <- paste('T', meta$time, sep = '')
+#meta$time <- paste('T', meta$time, sep = '')
 
 ```
 
@@ -81,7 +83,7 @@ meta$time <- paste('T', meta$time, sep = '')
  meta$experience_sample=paste(meta$experience,"-",meta$Sample_type)
 
  # create the new column to be used for the x axis (representing both times and replicate #)
- meta$time_replicate=with(meta, ifelse(bioreactor=="Aquifer",paste("T00.", meta$replicate, sep = ""),
+ meta$time_replicate=with(meta, ifelse(bioreactor=="Aquifer",paste("00.", meta$replicate, sep = ""),
                                        ifelse(experience=="Experience 2" & Sample_type=="Rock",
                                        paste(meta$time,paste("R.", meta$replicate), sep = "-"),
                                        meta$time)))
@@ -99,7 +101,7 @@ ps=phyloseq(otu_table(asv, taxa_are_rows=TRUE), tax_table(as.matrix(taxa)), samp
 # Select taxonomic rank
 #
 #
-taxa_rank="Family"
+taxa_rank="Genus"
 #
 #
 #
@@ -115,7 +117,7 @@ df=psmelt(glom)
 ## Identify most abundant taxa and assign color 
 
 Create a list of unique most abundant taxas in each sample
-```{r, eval=FALSE}
+```{r}
 library(dplyr)
 list_of_all_taxonomic_rank= list() # Create empty list
 i = 0
@@ -143,14 +145,14 @@ df2 <- df2 %>%
 
 ```
 
-## Create new color range (only needed once)
-```{r, eval=FALSE}
+## Create new color range
+```{r}
 library(randomcoloR)
 library(stringr)
 library(forcats)
 library(ggplot2)
 n=nrow(unique_taxon)
-palette=distinctColorPalette(n, runTsne = TRUE)
+palette=distinctColorPalette(n, runTsne = F)
 unique_taxon[[taxa_rank]]=factor(unique_taxon[[taxa_rank]])
 names(palette)=levels(unique_taxon[[taxa_rank]])
 palette[["Others"]]="#E1E1E1"
@@ -181,13 +183,13 @@ my_scale <- scale_fill_manual(name=as.character(taxa_rank), breaks=paste(final_l
 ```
 
 Saving and reloading color range 
-```{r, eval=FALSE}
+```{r}
 saveRDS(my_scale,paste('~/stats/histogramme/bac/top_', taxa_rank, '_color_palette.rds', sep = '')) # saving color palette
 my_scale=readRDS(paste('~/stats/histogramme/bac/top_', taxa_rank, '_color_palette.rds', sep = '')) # Load color palette
 ```
 
 ## Plotting your figures
-```{r, eval=FALSE}
+```{r}
 #Loop for plotting results
 library(forcats)
 library(ggtext)
@@ -197,25 +199,27 @@ for (habitat in unique(df2$experience_sample)){
   i = i + 1
   df_sample=subset(df2, experience_sample==habitat)
   
-  p=ggplot(df_sample, aes(x=time_replicate, weight=Abundance, fill=fct_reorder(.data[[taxa_rank]],Abundance,.desc=FALSE))) + # .data is very important to force the evaluation of the input variables (taxonomic_rank)
+  p=ggplot(df_sample, aes(x=time_replicate, weight=(Abundance*100), fill=fct_reorder(.data[[taxa_rank]],Abundance,.desc=FALSE))) + # .data is very important to force the evaluation of the input variables (taxonomic_rank)
   geom_bar() +
-  labs(y ='Relative abundance (%)', x="Time") +
+  labs(y ='Relative abundance (%)', x="Time (days)") +
   scale_y_continuous(expand = c(0,0)) +
   theme_classic() +
-  theme(text = element_text(size = 10),
-        axis.title=element_text(size=8),
-        legend.title=element_text(size=10),
-        plot.title = element_text(hjust =0.5),
-        axis.text.x = element_text(angle=70,vjust = 0.5, size=7),
+  theme(text = element_text(size = 12),
+        axis.title=element_text(size=12),
+        legend.title=element_text(size=12),
+        plot.title = element_text(hjust =0.5, size = 0), #so the title can be used in the file name, but doesn't appear on screen
+        axis.text.x = element_text(angle=90,vjust = 0.5, size=10, colour = 'black'),
         legend.position="bottom", #change to right
-        legend.text=element_markdown(size=10),
+        legend.text=element_markdown(size=11),
         legend.key.size = unit(0.5, 'cm'), # adjusting the size of the legend colored box
         strip.background = element_blank()) + # remove facet_grid box background
   ggtitle(paste(habitat)) +
   my_scale +
   facet_grid(~bioreactor, scales="free", space="free") +
-  guides(fill=guide_legend(ncol = 5, title=taxa_rank, title.position="top", title.hjust = 0.5, reverse=FALSE)) #change nrow = 6 to ncol = 1
+  guides(fill=guide_legend(ncol = 4, title=taxa_rank, title.position="top", title.hjust = 0.5, reverse=FALSE)) #change nrow = 6 to ncol = 1
   plot_list[[i]] = p
+  
+print(p)
 }
 # plot_list
 
@@ -223,13 +227,13 @@ for (habitat in unique(df2$experience_sample)){
 plot_path="~/stats/histogramme/bac/"
 for (i in plot_list[]){
   title=extractGGTitle(i) # extract title from plot
-  titlepdf=paste('median_', taxa_rank,"-", title,".pdf", sep="") # add.pdf to the end of every title to save figure as pdf
+  titlepdf=paste('bac_median_', taxa_rank,"-", title,".pdf", sep="") # add.pdf to the end of every title to save figure as pdf
   ggsave(as.character(titlepdf),plot=i, device="pdf", path=plot_path, width=27.94, height = 21.59, units="cm") # save plot
 }
 ```
 
 # Export tables
-```{r, eval=FALSE}
+```{r}
 df2$"Relative abundance"=(paste( df2$experience_sample, "_", df2$time_replicate,"_", df2[[taxa_rank]]))
 supplementary_dataframe=aggregate(x=df2$Abundance, by=list(df2$"Relative abundance"), FUN=sum)
 

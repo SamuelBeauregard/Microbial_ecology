@@ -106,7 +106,7 @@ ggplot(percentage_results, aes(x = time - 21)) +
   geom_line(aes(y = unique_r_percentage, color = bioreactor, group = bioreactor), size = 1, linetype = "dashed") +
   geom_line(aes(y = unique_w_percentage, color = bioreactor, group = bioreactor), size = 1, linetype = "dotted") +
   labs( #title = "Shared and Unique ASV Percentages for E2_R and E2_W",
-       x = "Time",
+       x = "Time (days)",
        y = "ASV Percentage",
        color = "Bioreactor") +
   theme_minimal() +

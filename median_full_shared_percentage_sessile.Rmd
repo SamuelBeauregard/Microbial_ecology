@@ -12,9 +12,9 @@ library(dplyr)
 ```
 
 ```{r}
-asv=read.table( "~/stats/median_asv_MV_bac.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
-meta=read.table("~/stats/median_meta_MV_bac.csv", sep=",", row.names=1, header=TRUE)
-taxa=read.table("~/stats/median_taxa_MV_bac.csv", sep=",", row.names=1, header=TRUE)
+asv=read.table( "~/stats/median_asv_MV_euc.csv", sep=",", row.names=1, header=TRUE, check.names=FALSE)
+meta=read.table("~/stats/median_meta_MV_euc.csv", sep=",", row.names=1, header=TRUE)
+taxa=read.table("~/stats/median_taxa_MV_euc.csv", sep=",", row.names=1, header=TRUE)
 
 ```
 
@@ -94,42 +94,54 @@ percentage_results <- grouped_db %>%
   ) %>%
   unnest(cols = c(results)) # Unnest the results data frame to get separate columns
 
+#switch to long df for plotting
+long_df <- percentage_results %>%
+  pivot_longer(
+    cols = c(shared_percentage, unique_r_percentage, unique_w_percentage),
+    names_to = "asv_type",
+    values_to = "percentage"
+  ) %>%
+  mutate(
+    asv_type = recode(asv_type,
+                      shared_percentage = "Shared",
+                      unique_r_percentage = "Sessile",
+                      unique_w_percentage = "Planktonic")
+  )
+
 ```
 
 #draw a graph of the varying shared percentage through time for each bioreactor
 ```{r}
-percentage_results$time <- gsub('T', '', percentage_results$time)
+long_df$time <- gsub('T', '', long_df$time)
 
-ggplot(percentage_results, aes(x = time)) +
-  geom_line(aes(y = shared_percentage, color = bioreactor, group = bioreactor), size = 1, linetype = "solid") + 
-  geom_line(aes(y = unique_r_percentage, color = bioreactor, group = bioreactor), size = 1, linetype = "dashed") +
-  geom_line(aes(y = unique_w_percentage, color = bioreactor, group = bioreactor), size = 1, linetype = "dotted") +
-  labs(#title = "Shared and Unique ASV Percentages for E1_R and E1_W",
-       x = "Time",
-       y = "ASV Percentage",
-       color = "Bioreactor") +
-  theme_minimal() +
+plot <- ggplot(long_df, aes(x = time, y = percentage)) +
+  geom_line(aes(color = bioreactor, linetype = asv_type, group = interaction(bioreactor, asv_type)), size = 2) +
+  labs(
+    x = "Time (days)",
+    y = "Proportion of ASVs (%)",
+    color = "Bioreactor",
+    linetype = "ASV Type"
+  ) +
+  theme_classic() +
   theme(
     panel.grid = element_blank(),
-    text = element_text(size = 12),
+    text = element_text(size = 18),
     legend.position = "bottom",
     plot.title = element_text(hjust = 0.5),
-    axis.text = element_text(color = "black") # Set axis text color to black
+    axis.text = element_text(color = "black")
   ) +
-  scale_color_viridis_d(option = "D")
-  scale_y_continuous(labels = scales::percent_format(scale = 1)) # Format y-axis as percentages
+  scale_color_viridis_d(option = "D") +
+  scale_linetype_manual(values = c(
+    "Shared" = "solid",
+    "Sessile" = "twodash",
+    "Planktonic" = "dotted"
+  ))
 
 
 
-# #save plot
-# ggsave(filename = "median_shared_asv_percentage_plot_bac.pdf", plot = last_plot(), path = "~/stats/shared_ASV/bac/planktonic", device = "pdf")
+print(plot)
 
-print(last_plot())
-
-#saving the pdf doesn't work, but it appears on the console##############################
-ggsave(filename = "median_shared_asv_percentage_plot_bac.pdf", plot = last_plot(), path = "~/stats/shared_ASV/bac/sessile", device = "pdf")
-
-
-
+#saving the pdf 
+ggsave(filename = "median_shared_asv_percentage_plot_euc.pdf", plot = plot, path = "~/stats/shared_ASV/euc/sessile/", device = "pdf", width = 10, height = 7.5)
 ```
 
